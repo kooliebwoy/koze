@@ -512,12 +512,53 @@ async function renderRoute(request, url, match, params, overrides, status) {
 		}
 		throw err;
 	}
-	// Legacy contract: `render()` may return either a string (raw HTML)
-	// or an object with `html` / `head` fields (when the compiler
-	// produced a layout-compatible render). Normalize to string.
 	let html = typeof rendered === 'string'
 		? rendered
 		: (rendered?.html ?? '');
+
+	// Deduplicate and merge multiple __koze_data JSON blocks into a single block
+	const dataScriptRe = /<script\b[^>]*?id="__koze_data"[^>]*?>([\s\S]*?)<\/script>/gi;
+	const payloads = [];
+	let match;
+	while ((match = dataScriptRe.exec(html)) !== null) {
+		payloads.push(match[1]);
+	}
+
+	if (payloads.length > 0) {
+		const merged = {};
+		for (const payloadText of payloads) {
+			try {
+				const unescaped = payloadText
+					.replace(/\\u003c/g, '<')
+					.replace(/\\u2028/g, '\u2028')
+					.replace(/\\u2029/g, '\u2029');
+				const data = JSON.parse(unescaped);
+				if (data && typeof data === 'object') {
+					Object.assign(merged, data);
+				}
+			} catch (e) {
+				// Ignore malformed payloads and keep scanning
+			}
+		}
+		html = html.replace(dataScriptRe, '');
+
+		let serialized = JSON.stringify(merged);
+		const lineSep = String.fromCharCode(0x2028);
+		const paraSep = String.fromCharCode(0x2029);
+		serialized = serialized
+			.split('<').join('\\u003c')
+			.split(lineSep).join('\\u2028')
+			.split(paraSep).join('\\u2029');
+
+		const mergedTag = `<script type="application/json" id="__koze_data">${serialized}</script>\n`;
+
+		const bodyCloseIdx = html.lastIndexOf('</body>');
+		if (bodyCloseIdx >= 0) {
+			html = html.slice(0, bodyCloseIdx) + mergedTag + html.slice(bodyCloseIdx);
+		} else {
+			html = html + '\n' + mergedTag;
+		}
+	}
 
 	// Inject workflow poll metadata if workflowStatus(..., { poll }) was
 	// called during render. The client bridge reads the JSON config tag and
