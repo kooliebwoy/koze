@@ -1294,11 +1294,10 @@ function routesPlugin(options: ResolvedKuratchiOptions): Plugin {
 			// schema apps using `src/server/schemas/*` won't see DB
 			// row types regenerated, which apps/web ships fine without.
 			const schemaAbsPath = path.resolve(projectRoot, 'src', 'server', 'schema.ts');
-			const isWorkflowFile = file.endsWith('.workflow.ts');
-			const isPipelineFile = file.endsWith('.pipeline.ts');
+			const isConventionFile = /\.(agent|workflow|queue|pipeline|container|sandbox|do)\.ts$/.test(file);
 			const contentRootAbs = path.resolve(projectRoot, 'src', 'content');
 			const isContentFile = file.startsWith(contentRootAbs + path.sep) && file.toLowerCase().endsWith('.md');
-			if (file === schemaAbsPath || isWorkflowFile || isPipelineFile || isContentFile) {
+			if (file === schemaAbsPath || isConventionFile || isContentFile) {
 				try {
 					writeAppTypes({ projectDir: projectRoot });
 				} catch (err) {
@@ -1306,6 +1305,14 @@ function routesPlugin(options: ResolvedKuratchiOptions): Plugin {
 					// Surface them in the dev console and continue.
 					// eslint-disable-next-line no-console
 					console.warn('[koze] writeAppTypes failed:', (err as Error).message);
+				}
+				if (isConventionFile) {
+					try {
+						syncWranglerFromConventions(projectRoot, options.serverDir, workerModuleCompiler);
+					} catch (err) {
+						// eslint-disable-next-line no-console
+						console.warn('[koze] syncWranglerFromConventions failed:', (err as Error).message);
+					}
 				}
 			}
 
