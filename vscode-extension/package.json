@@ -1,0 +1,53 @@
+{
+  "name": "koze-syntax",
+  "displayName": "Koze",
+  "description": "Syntax highlighting for Koze .koze route files: expressions, native JS control flow, attribute binding, and embedded <script>/<style> blocks.",
+  "version": "0.3.1",
+  "publisher": "kuratchi",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "scripts": {
+    "package": "vsce package --no-dependencies"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "koze",
+        "aliases": [
+          "Koze",
+          "koze"
+        ],
+        "extensions": [
+          ".koze",
+          ".kuratchi"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/koze-light.svg",
+          "dark": "./icons/koze-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "koze",
+        "scopeName": "text.html.koze",
+        "path": "./syntaxes/koze.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.javascript": "javascript",
+          "meta.embedded.block.typescript": "typescript",
+          "meta.embedded.block.css": "css",
+          "source.js": "javascript",
+          "source.ts": "typescript",
+          "source.css": "css"
+        }
+      }
+    ]
+  }
+}
+
+

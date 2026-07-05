@@ -1,0 +1,8 @@
+dist
+node_modules
+coverage
+.wrangler
+.DS_Store
+.tmp-projects
+.koze
+
