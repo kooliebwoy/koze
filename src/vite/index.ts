@@ -759,6 +759,18 @@ function routesPlugin(options: ResolvedKuratchiOptions): Plugin {
 							manifest: true,
 						},
 					},
+					ssr: {
+						resolve: {
+							dedupe: dedupePackages,
+						},
+						ssr: {
+							noExternal: true,
+						},
+						optimizeDeps: {
+							noDiscovery: true,
+							include: [],
+						},
+					},
 				},
 			};
 		},
@@ -881,49 +893,51 @@ function routesPlugin(options: ResolvedKuratchiOptions): Plugin {
 			// Pre-scan routes before the client-env Rollup build starts so
 			// each leading-script browser fragment is registered as a Rollup
 			// input in production and as a Vite virtual module in dev.
-			for (const route of routes) {
-				if (route.type === 'api') continue;
-				try {
-					const source = await fs.promises.readFile(route.absPath, 'utf-8');
-					extractClientFragments(source, route.absPath, clientFragments, isProduction, componentCompiler ?? undefined);
-				} catch {
-					// Routes unreadable at config time (permissions/moves) will
-					// surface later in `load` where the user gets a real error.
+			if (isProduction || process.env.VITEST === 'true') {
+				for (const route of routes) {
+					if (route.type === 'api') continue;
+					try {
+						const source = await fs.promises.readFile(route.absPath, 'utf-8');
+						extractClientFragments(source, route.absPath, clientFragments, isProduction, componentCompiler ?? undefined);
+					} catch {
+						// Routes unreadable at config time (permissions/moves) will
+						// surface later in `load` where the user gets a real error.
+					}
 				}
-			}
 
-			// Same pre-scan for every discovered layout. Layouts also ship a
-			// leading-`<script>` client fragment
-			// — and crucially their event handlers (`on<event>={fn(...)}`)
-			// must be registered with the per-layout handler registry BEFORE
-			// the client-env Rollup build starts, otherwise the registration
-			// table never makes it into the leading-fragment bundle and the
-			// browser sees `ReferenceError`s when it tries to invoke them.
-			//
-			// Without this loop, layouts emit `data-client-event` attributes
-			// (because `transformLayoutFile` queries the registry at compile
-			// time) but the leading-fragment hash is never added to the
-			// client Rollup input, so no asset is produced. The result is a
-			// silently broken layout: SSR renders correctly, the client
-			// bridge sees the `data-client-handler` attribute but can't find
-			// any registered handler for it.
-			for (const layoutPath of allLayoutPaths) {
-				try {
-					const source = await fs.promises.readFile(layoutPath, 'utf-8');
-					extractClientFragments(source, layoutPath, clientFragments, isProduction, componentCompiler ?? undefined);
-				} catch {
-					// Same tolerance as the route loop above — surface real
-					// errors at `load()` time where the user gets a stack.
+				// Same pre-scan for every discovered layout. Layouts also ship a
+				// leading-`<script>` client fragment
+				// — and crucially their event handlers (`on<event>={fn(...)}`)
+				// must be registered with the per-layout handler registry BEFORE
+				// the client-env Rollup build starts, otherwise the registration
+				// table never makes it into the leading-fragment bundle and the
+				// browser sees `ReferenceError`s when it tries to invoke them.
+				//
+				// Without this loop, layouts emit `data-client-event` attributes
+				// (because `transformLayoutFile` queries the registry at compile
+				// time) but the leading-fragment hash is never added to the
+				// client Rollup input, so no asset is produced. The result is a
+				// silently broken layout: SSR renders correctly, the client
+				// bridge sees the `data-client-handler` attribute but can't find
+				// any registered handler for it.
+				for (const layoutPath of allLayoutPaths) {
+					try {
+						const source = await fs.promises.readFile(layoutPath, 'utf-8');
+						extractClientFragments(source, layoutPath, clientFragments, isProduction, componentCompiler ?? undefined);
+					} catch {
+						// Same tolerance as the route loop above — surface real
+						// errors at `load()` time where the user gets a stack.
+					}
 				}
-			}
 
-			if (rootAppPath) {
-				try {
-					const source = await fs.promises.readFile(rootAppPath, 'utf-8');
-					extractClientFragments(source, rootAppPath, clientFragments, isProduction, componentCompiler ?? undefined);
-				} catch {
-					// Same best-effort policy as routes/layouts. Real read errors
-					// surface later when the virtual app module loads.
+				if (rootAppPath) {
+					try {
+						const source = await fs.promises.readFile(rootAppPath, 'utf-8');
+						extractClientFragments(source, rootAppPath, clientFragments, isProduction, componentCompiler ?? undefined);
+					} catch {
+						// Same best-effort policy as routes/layouts. Real read errors
+						// surface later when the virtual app module loads.
+					}
 				}
 			}
 
@@ -939,19 +953,21 @@ function routesPlugin(options: ResolvedKuratchiOptions): Plugin {
 				kind: 'bridge',
 			});
 
-			// Scan every extracted fragment for `$server/<path>` imports
-			// up front. Populating `rpcReferencedModules` BEFORE the SSR
-			// build starts ensures `koze:rpc-map` has static imports
-			// to every server module the client might RPC into.
-			for (const fragment of clientFragments.values()) {
-				// NB: use `[\s\S]+?` to tolerate multi-line named-import lists
-				// — `.+` does not cross newlines and would miss any import with
-				// the form `import { a,\n b } from '$server/...'`, which is
-				// how most hand-authored routes break up long lists.
-				const importRe = /import\s+[\s\S]+?from\s+['"]\$server\/([^'"]+)['"]/g;
-				let m: RegExpExecArray | null;
-				while ((m = importRe.exec(fragment.source)) !== null) {
-					rpcReferencedModules.add(m[1]);
+			if (isProduction || process.env.VITEST === 'true') {
+				// Scan every extracted fragment for `$server/<path>` imports
+				// up front. Populating `rpcReferencedModules` BEFORE the SSR
+				// build starts ensures `koze:rpc-map` has static imports
+				// to every server module the client might RPC into.
+				for (const fragment of clientFragments.values()) {
+					// NB: use `[\s\S]+?` to tolerate multi-line named-import lists
+					// — `.+` does not cross newlines and would miss any import with
+					// the form `import { a,\n b } from '$server/...'`, which is
+					// how most hand-authored routes break up long lists.
+					const importRe = /import\s+[\s\S]+?from\s+['"]\$server\/([^'"]+)['"]/g;
+					let m: RegExpExecArray | null;
+					while ((m = importRe.exec(fragment.source)) !== null) {
+						rpcReferencedModules.add(m[1]);
+					}
 				}
 			}
 
@@ -5029,7 +5045,15 @@ const MAP = {
 ${mapEntries}
 };
 
-export function lookup(subpath) {
+export async function lookup(subpath) {
+	if (globalThis.__koze_DEV__) {
+		try {
+			return await import(/* @vite-ignore */ \`$server/\${subpath}\`);
+		} catch (e) {
+			console.error('[koze] Dev RPC import failed for ' + subpath + ':', e);
+			return null;
+		}
+	}
 	return MAP[subpath] || null;
 }
 `;

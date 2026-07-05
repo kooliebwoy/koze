@@ -410,7 +410,7 @@ async function dispatchServerModuleChannelCall(input) {
 	}
 	const subpath = op.slice(0, slashIdx);
 	const fnName = op.slice(slashIdx + 1);
-	const mod = lookupRpcModule(subpath);
+	const mod = await lookupRpcModule(subpath);
 	if (!mod) {
 		return { ok: false, status: 404, error: 'Unknown RPC module: ' + subpath };
 	}
