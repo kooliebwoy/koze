@@ -1355,21 +1355,44 @@ function routesPlugin(options: ResolvedKuratchiOptions): Plugin {
 			if (isContentFile) {
 				virtualIds.push(RESOLVED_VIRTUAL_CONTENT_ID);
 			}
-			const fragmentOwner =
-				file === rootAppPath ||
-				isRouteFile(file, projectRoot, options.routesDir, options.api.root);
-			const clientFragmentIds = fragmentOwner
-				? (await refreshClientFragmentsForImporter(
-					file,
+			const affectedRoutes = new Set<string>();
+			const collectImporters = (f: string) => {
+				if (f === rootAppPath || isRouteFile(f, projectRoot, options.routesDir, options.api.root)) {
+					affectedRoutes.add(f);
+				}
+				const importers = componentImporters.get(f);
+				if (importers) {
+					for (const imp of importers) {
+						if (!affectedRoutes.has(imp)) {
+							collectImporters(imp);
+						}
+					}
+				}
+				const dependents = layoutDependents.get(f);
+				if (dependents) {
+					for (const dep of dependents) {
+						if (!affectedRoutes.has(dep)) {
+							collectImporters(dep);
+						}
+					}
+				}
+			};
+			collectImporters(file);
+
+			const clientFragmentIds: string[] = [];
+			for (const routePath of affectedRoutes) {
+				const hashes = await refreshClientFragmentsForImporter(
+					routePath,
 					clientFragments,
 					isProduction,
 					projectRoot,
 					options.api.root,
 					componentCompiler ?? undefined,
-				)).map(
-					(hash) => CLIENT_VIRTUAL_PREFIX + hash + '.ts',
-				)
-				: [];
+				);
+				for (const hash of hashes) {
+					clientFragmentIds.push(CLIENT_VIRTUAL_PREFIX + hash + '.ts');
+				}
+			}
 
 			// If this file has no framework relationship, fall through
 			// to Vite's default behavior (returning undefined preserves
@@ -1401,7 +1424,7 @@ function routesPlugin(options: ResolvedKuratchiOptions): Plugin {
 				}
 			}
 
-			if (fragmentOwner) {
+			if (affectedRoutes.size > 0) {
 				server.ws.send({ type: 'full-reload' });
 			}
 
