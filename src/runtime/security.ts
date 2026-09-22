@@ -18,7 +18,7 @@ import { __getLocals, __setLocal } from './context.js';
 
 // ── CSP Nonce ──────────────────────────────────────────────────────
 //
-// The runtime injects a handful of inline <script> tags (workflow poll, client bridge,
+// The runtime injects a handful of inline <script> tags (client bridge,
 // confirm handlers). When the developer configures a Content-Security-Policy that
 // includes the literal placeholder `{NONCE}`, the framework generates a random nonce
 // per request, stamps it onto every injected <script>, and substitutes it into the CSP
@@ -246,8 +246,7 @@ export function parseQueryArgs(argsRaw: string): { valid: boolean; args: unknown
 // ── Dev-mode flag ──────────────────────────────────────────────────
 //
 // Error sanitizers read this to decide whether to leak internal messages.
-// The legacy CLI-built worker sets `globalThis.__koze_DEV__` inside the
-// generated entry; the Vite plugin sets the same flag when running under
+// The Vite plugin sets `globalThis.__koze_DEV__` when running under
 // `vite dev` (never in `vite build`). Any host can opt in by assigning
 // `(globalThis as any).__koze_DEV__ = true` BEFORE handling a request.
 
@@ -258,9 +257,7 @@ export function isDevMode(): boolean {
 // ── Error sanitization ─────────────────────────────────────────────
 //
 // These two helpers are the single source of truth for how framework-level
-// error messages reach the client. They mirror `__sanitizeErrorMessage` /
-// `__sanitizeErrorDetail` that the legacy CLI generated into every worker,
-// so Vite + CLI builds behave identically.
+// error messages reach the client.
 //
 // Rules (same in both helpers):
 //   1. `ActionError` / `PageError` messages are ALWAYS surfaced. These are

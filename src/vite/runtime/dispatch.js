@@ -24,14 +24,10 @@ import {
 	isKuratchiCapnWebWebSocketRequest,
 } from '@kuratchi/koze/runtime/channel-capnweb-host.js';
 import { invokeKuratchiChannelHost } from '@kuratchi/koze/runtime/channel-host.js';
-import { KOZE_CHANNEL_ENDPOINT, KOZE_LEGACY_CHANNEL_ENDPOINT } from '@kuratchi/koze/runtime/channel-protocol.js';
+import { KOZE_CHANNEL_ENDPOINT } from '@kuratchi/koze/runtime/channel-protocol.js';
 
-// Client-side polling bridge injected into pages that use workflowStatus({ poll }).
-// Mirrors the initWorkflowPoll IIFE from root-layout-pipeline.ts (the CLI path).
-const __POLL_BRIDGE_SCRIPT = '<script>(function(){function parseInterval(v){if(typeof v==="number")return v>0?v:30000;if(!v)return 30000;var m=String(v).match(/^(\\d+(?:\\.\\d+)?)(ms|s|m)?$/i);if(!m)return 30000;var n=parseFloat(m[1]);var u=(m[2]||"s").toLowerCase();if(u==="ms")return n;if(u==="m")return n*60000;return n*1000}function readConfig(){var el=document.getElementById("__koze_poll");if(!el)return null;try{return JSON.parse(el.textContent||"{}")}catch(e){return null}}var timer=null;var stopped=false;function stop(){stopped=true;if(timer){clearTimeout(timer);timer=null}}function tick(interval){if(stopped)return;timer=setTimeout(function(){if(stopped)return;if(document.hidden){tick(interval);return}fetch(location.pathname+location.search,{headers:{"x-koze-poll":"1"},credentials:"same-origin"}).then(function(r){var done=r.headers.get("x-koze-poll-done")==="1";return r.text().then(function(html){return{html:html,done:done,ok:r.ok}})}).then(function(res){if(stopped)return;if(!res.ok){tick(interval);return}if(typeof DOMParser==="undefined"){location.reload();return}var doc=new DOMParser().parseFromString(res.html,"text/html");if(doc&&doc.body){document.body.innerHTML=doc.body.innerHTML}if(res.done){stop();return}var next=readConfig();tick(next?parseInterval(next.interval):interval)}).catch(function(){if(!stopped)tick(interval)})},interval)}var cfg=readConfig();if(cfg)tick(parseInterval(cfg.interval))})()\x3c/script>';
-// Reuse the legacy security module wholesale. Same guarantees as the
-// CLI-generated worker: same-origin gate on RPC/action, default security
-// headers, optional CSP nonce stamping.
+// Same-origin gates for RPC/action, default security headers, and
+// optional CSP nonce stamping.
 import {
 	validateRpcRequest,
 	validateActionRequest,
@@ -179,9 +175,33 @@ function getApiRouteMethods(routeModule) {
 const compiledRoutes = routes.map((r) => ({
 	pattern: r.pattern,
 	type: r.type || 'page',
-	module: r.module,
-	api: (r.type || 'page') === 'api' ? prepareApiRoute(r.module) : null,
+	load: r.load,
+	module: r.module || null,
+	modulePromise: null,
+	api: r.module && (r.type || 'page') === 'api' ? prepareApiRoute(r.module) : null,
 }));
+
+async function loadRoute(match) {
+	if (match.module) return match.module;
+	if (typeof match.load !== 'function') {
+		throw new Error(`[koze] Route ${match.pattern} has no module loader.`);
+	}
+	if (!match.modulePromise) {
+		match.modulePromise = Promise.resolve()
+			.then(() => match.load())
+			.then((routeModule) => {
+				match.module = routeModule;
+				if (match.type === 'api') match.api = prepareApiRoute(routeModule);
+				return routeModule;
+			})
+			.catch((error) => {
+				// Permit a retry after a transient dev/HMR module-load failure.
+				match.modulePromise = null;
+				throw error;
+			});
+	}
+	return match.modulePromise;
+}
 
 /**
  * High-level Koze request handler. The user's Worker delegates via
@@ -274,9 +294,8 @@ function escapeHtml(s) {
  * framework-injected `<script>` tags in HTML output. No-op when CSP is
  * unconfigured (most apps).
  *
- * Mirrors `__attachCookies` → `__secHeaders` in the legacy CLI
- * `generated-worker.ts`. Must stay in that order — CSP / security
- * headers should be final.
+ * Cookie attachment precedes security handling so CSP/security headers
+ * remain final.
  */
 function finalizeResponse(response) {
 	if (isWebSocketUpgradeResponse(response)) return response;
@@ -308,12 +327,12 @@ function isWebSocketUpgradeResponse(response) {
  * access has to go through a `$server/*` module (which uses `getEnv()`
  * from the module-scope request context we seeded in `handle`).
  *
- * This mirrors the legacy CLI's `generated-worker.ts` contract exactly.
+ * This is the Worker dispatch contract emitted by the Vite integration.
  */
 async function coreHandle(runtimeCtx) {
 	const { request, url } = runtimeCtx;
 
-	if (url.pathname === KOZE_CHANNEL_ENDPOINT || url.pathname === KOZE_LEGACY_CHANNEL_ENDPOINT) {
+	if (url.pathname === KOZE_CHANNEL_ENDPOINT) {
 		const isWebSocket = isKuratchiCapnWebWebSocketRequest(request);
 		const channelCheck = validateRpcRequest(request, url, {
 			allowedMethods: [isWebSocket ? 'GET' : 'POST'],
@@ -338,6 +357,7 @@ async function coreHandle(runtimeCtx) {
 	const routeMatch = matchPreparedRouter(preparedRouter, url.pathname);
 	if (!routeMatch) return new Response('Not Found', { status: 404 });
 	const match = compiledRoutes[routeMatch.index];
+	await loadRoute(match);
 	const params = routeMatch.params;
 	runtimeCtx.params = params;
 
@@ -372,6 +392,7 @@ async function dispatchRouteChannelCall(input, runtimeCtx) {
 	const routeUrl = new URL(routePath || '/', runtimeCtx.url.origin);
 	const routeMatch = matchPreparedRouter(preparedRouter, routeUrl.pathname);
 	const match = routeMatch ? compiledRoutes[routeMatch.index] : null;
+	if (match) await loadRoute(match);
 	const params = routeMatch ? routeMatch.params : null;
 	const rpcTable = match && match.module && match.module.rpc && typeof match.module.rpc === 'object'
 		? match.module.rpc
@@ -519,9 +540,9 @@ async function renderRoute(request, url, match, params, overrides, status) {
 	// Deduplicate and merge multiple __koze_data JSON blocks into a single block
 	const dataScriptRe = /<script\b[^>]*?id="__koze_data"[^>]*?>([\s\S]*?)<\/script>/gi;
 	const payloads = [];
-	let match;
-	while ((match = dataScriptRe.exec(html)) !== null) {
-		payloads.push(match[1]);
+	let dataScriptMatch;
+	while ((dataScriptMatch = dataScriptRe.exec(html)) !== null) {
+		payloads.push(dataScriptMatch[1]);
 	}
 
 	if (payloads.length > 0) {
@@ -560,27 +581,7 @@ async function renderRoute(request, url, match, params, overrides, status) {
 		}
 	}
 
-	// Inject workflow poll metadata if workflowStatus(..., { poll }) was
-	// called during render. The client bridge reads the JSON config tag and
-	// re-fetches the page on the given interval, swapping <body> contents
-	// so every { status.* } in the template re-renders against fresh data.
-	// The server sets x-koze-poll-done when the 'until' predicate
-	// reports terminal, so the client stops polling.
-	const poll = __getLocals().__kozePoll;
 	const responseHeaders = { 'content-type': 'text/html; charset=utf-8' };
-	if (poll && !poll.done) {
-		const payload = JSON.stringify({ interval: poll.interval });
-		html = html + '\n<script type="application/json" id="__koze_poll">' + payload.replace(/</g, '\\u003c') + '</script>';
-		// Inject the client-side polling bridge inline. The IIFE reads the
-		// config tag above, then re-fetches the current URL on the interval
-		// and swaps <body> contents. Runs once — the setTimeout chain
-		// survives body innerHTML replacements because the closure is in
-		// memory, not in the DOM.
-		html = html + '\n' + __POLL_BRIDGE_SCRIPT;
-	}
-	if (poll && poll.done) {
-		responseHeaders['x-koze-poll-done'] = '1';
-	}
 
 	// Streaming: if the template registered any async boundaries via
 	// `const x = fn()` patterns, the sync render emitted pending-state
@@ -751,7 +752,6 @@ async function handleAction(request, match, params, url) {
 		// `redirect()` from `@kuratchi/koze/runtime/context` throws a
 		// `RedirectError` — the framework's declared control-flow
 		// mechanism for action handlers. Convert to a real 3xx response.
-		// Mirrors `__handleAction` in `@kuratchi/koze/runtime/generated-worker.ts`.
 		if (err && err.isRedirectError) {
 			const location = err.location || url.pathname;
 			const status = Number(err.status) || 303;
@@ -771,8 +771,7 @@ async function handleAction(request, match, params, url) {
 		}
 
 		// Action errors — the route re-renders with `actionName.error`
-		// populated so templates can surface the message inline (like the
-		// legacy wrangler worker's `__handleAction` did). This is the
+		// populated so templates can surface the message inline. This is the
 		// declared contract in `koze` docs: `actionName.error`
 		// is set on `ActionError` throw and cleared on the next render.
 		//

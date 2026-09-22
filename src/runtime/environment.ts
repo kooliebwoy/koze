@@ -4,7 +4,7 @@
  * Provides compile-time environment flags that are set by the framework.
  * The `dev` flag is true during development builds and false in production.
  *
- * Usage in server code (middleware.ts, .do.ts, etc.):
+ * Usage in server code (middleware.ts, ordinary server modules, etc.):
  * ```ts
  * import { dev } from 'koze:environment';
  *

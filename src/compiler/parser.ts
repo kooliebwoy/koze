@@ -10,7 +10,7 @@ import {
   stripKuratchiTemplateCompilerIgnoredNodes,
 } from './template-parser.js';
 import { validateKuratchiAst } from './validation.js';
-import { validateKuratchiVirtualModuleImport } from './virtual-modules.js';
+import { validateKozeVirtualModuleImport } from './virtual-modules.js';
 
 /**
  * HTML file parser.
@@ -587,7 +587,6 @@ function extractKuratchiEnvironmentDevAliases(importLine: string): string[] {
   if (
     moduleSpecifier !== 'koze:environment' &&
     moduleSpecifier !== 'koze/environment' &&
-    moduleSpecifier !== 'kuratchi:environment' &&
     moduleSpecifier !== '@kuratchi/koze/environment' &&
     moduleSpecifier !== '@kuratchi/js/environment'
   ) {
@@ -618,13 +617,12 @@ function extractKuratchiRequestImports(importLine: string): KuratchiRequestImpor
   if (
     parsed.moduleSpecifier !== 'koze:request' &&
     parsed.moduleSpecifier !== 'koze/request' &&
-    parsed.moduleSpecifier !== 'kuratchi:request' &&
     parsed.moduleSpecifier !== '@kuratchi/koze/request' &&
     parsed.moduleSpecifier !== '@kuratchi/js/request'
   ) {
     return [];
   }
-  validateKuratchiVirtualModuleImport('koze:request', parsed.bindings, parsed.namespaceImport, 'route');
+  validateKozeVirtualModuleImport('koze:request', parsed.bindings, parsed.namespaceImport, 'route');
 
   const imports: KuratchiRequestImport[] = [];
   for (const binding of parsed.bindings) {
@@ -1534,17 +1532,13 @@ function isNpmPackageImport(moduleSpecifier: string | null): boolean {
   if (moduleSpecifier.startsWith('/')) return false;
   if (moduleSpecifier.startsWith('$')) return false;
   if (moduleSpecifier.startsWith('koze:')) return false;
-  if (moduleSpecifier.startsWith('kuratchi:')) return false;
   if (moduleSpecifier.startsWith('cloudflare:')) return false;
   // Looks like an npm package
   return true;
 }
 
 function isFrameworkVirtualModuleSpecifier(moduleSpecifier: string | null): moduleSpecifier is string {
-  return !!moduleSpecifier && (
-    moduleSpecifier.startsWith('koze:') ||
-    moduleSpecifier.startsWith('kuratchi:')
-  );
+  return !!moduleSpecifier && moduleSpecifier.startsWith('koze:');
 }
 
 /**
@@ -1596,8 +1590,17 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
       const line = statement.text.trim();
       const moduleSpecifier = extractImportModuleSpecifier(line);
       const parsedImport = parseImportStatement(line);
+      if (
+        parsedImport.moduleSpecifier?.startsWith('kuratchi:') ||
+        parsedImport.moduleSpecifier?.endsWith('.kuratchi')
+      ) {
+        throw new Error(
+          `[koze compiler] ${parsedImport.moduleSpecifier} is no longer supported. ` +
+            'Use the koze: virtual-module namespace and .koze source extension.',
+        );
+      }
       if (isFrameworkVirtualModuleSpecifier(parsedImport.moduleSpecifier)) {
-        validateKuratchiVirtualModuleImport(
+        validateKozeVirtualModuleImport(
           parsedImport.moduleSpecifier,
           parsedImport.bindings,
           parsedImport.namespaceImport,
@@ -1613,12 +1616,12 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
       //
       // The "ghost-import" `.html` form is gone — the only thing in the
       // codebase that still ends in `.html` is generated browser output.
-      const libMatch = line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]\$lib\/([^'"]+)\.(?:koze|kuratchi)['"]/s);
+      const libMatch = line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]\$lib\/([^'"]+)\.koze['"]/s);
       const pkgMatch = !libMatch
-        ? line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]((?:@[^/'"]+\/[^/'"]+)|[^./@'"][^/'"]*)\/([^'"]+)\.(?:koze|kuratchi)['"]/s)
+        ? line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]((?:@[^/'"]+\/[^/'"]+)|[^./@'"][^/'"]*)\/([^'"]+)\.koze['"]/s)
         : null;
       const relMatch = !libMatch && !pkgMatch
-        ? line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"](\.\.?\/[^'"]+)\.(?:koze|kuratchi)['"]/s)
+        ? line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"](\.\.?\/[^'"]+)\.koze['"]/s)
         : null;
       if (libMatch) {
         const componentName = libMatch[1]; // e.g. "StatCard"
@@ -1674,7 +1677,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
         // double-handle it. Routes/layouts that mistakenly import
         // from `koze:component` fall through to the regular
         // virtual-module pipeline (it resolves to a runtime stub).
-        if (moduleSpecifier === 'koze:component' || moduleSpecifier === 'kuratchi:component') {
+        if (moduleSpecifier === 'koze:component') {
           continue;
         }
         // Track koze:environment imports - dev flag will be serialized for client
@@ -1724,7 +1727,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
       const parsedImport = parseImportStatement(line);
       const isTypeOnly = isTypeOnlyImportLine(line);
       if (isFrameworkVirtualModuleSpecifier(parsedImport.moduleSpecifier)) {
-        validateKuratchiVirtualModuleImport(
+        validateKozeVirtualModuleImport(
           parsedImport.moduleSpecifier,
           parsedImport.bindings,
           parsedImport.namespaceImport,
@@ -2002,4 +2005,4 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   return parsed;
 }
 
-// TypeScript transpilation removed — wrangler's esbuild handles it
+// TypeScript transpilation is delegated to the build integration.

@@ -40,12 +40,14 @@ export interface ComponentCompiler {
   }): string[];
   getServerImports(): string[];
   collectServerRpcBindings(componentNames: Map<string, string>): ComponentServerRpcBinding[];
+  collectServerActionBindings(componentNames: Map<string, string>): ComponentServerRpcBinding[];
   /**
    * Absolute path each component fileName resolved to. Consumers (e.g.
    * the Vite plugin) call this to register `addWatchFile` so HMR
    * triggers a route recompile when a component changes on disk.
    */
   getResolvedFiles(): Map<string, string>;
+  invalidate(fileNameOrPath: string): void;
 }
 
 interface CreateComponentCompilerOptions {
@@ -70,8 +72,6 @@ interface ComponentServerRpcBinding {
 }
 
 const COMPONENT_EXT = '.koze';
-const LEGACY_COMPONENT_EXT = '.kuratchi';
-const COMPONENT_EXTENSIONS = [COMPONENT_EXT, LEGACY_COMPONENT_EXT] as const;
 const RELATIVE_PREFIX = '__rel__:';
 
 /**
@@ -89,7 +89,7 @@ const PROPS_BAG_NAME = '__koze_propsbag';
  * `import { props as foo }` is rejected with a hard error so the
  * convention stays predictable across every component in a codebase.
  */
-const COMPONENT_IMPORT_RE = /^\s*import\s*\{\s*([^}]+)\s*\}\s*from\s*['"](?:koze|kuratchi):component['"]\s*;?\s*$/m;
+const COMPONENT_IMPORT_RE = /^\s*import\s*\{\s*([^}]+)\s*\}\s*from\s*['"]koze:component['"]\s*;?\s*$/m;
 
 /**
  * Strip JS comments (line `//…\n` and block `/* … *\/`) and string
@@ -133,13 +133,10 @@ function stripCommentsAndStrings(source: string): string {
 const PROPS_REFERENCE_RE = /\bprops\b/;
 
 function resolveComponentFile(basePathWithoutExt: string): string {
-  for (const ext of COMPONENT_EXTENSIONS) {
-    const candidate = basePathWithoutExt.endsWith(ext)
-      ? basePathWithoutExt
-      : basePathWithoutExt + ext;
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return '';
+  const candidate = basePathWithoutExt.endsWith(COMPONENT_EXT)
+    ? basePathWithoutExt
+    : basePathWithoutExt + COMPONENT_EXT;
+  return fs.existsSync(candidate) ? candidate : '';
 }
 
 function resolvePackageComponent(projectDir: string, pkgName: string, componentFile: string): string {
@@ -700,7 +697,7 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     // type aliases inside the script), but the consumer of this
     // emitted code is whatever bundler the framework end-user runs:
     //
-    //   - Legacy CLI → wrangler's esbuild handles TS downstream
+    //   - Build integrations → Vite/esbuild handles TS downstream
     //   - Vite plugin → Rollup, which does NOT transpile TS
     //
     // Stripping types here once means both consumers receive plain
@@ -726,7 +723,7 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
         }).outputText
       : '';
     const devDecls = buildDevAliasDeclarations(parsed.devAliases, isDev);
-    // TypeScript is preserved — wrangler's esbuild handles transpilation
+    // TypeScript is preserved — Vite/esbuild handles transpilation
     const effectivePropsCode = [devDecls, propsCode].filter(Boolean).join('\n');
 
     const styleBlocks = getKuratchiTemplateRawBlocks(parsed.ir.template.ast, 'style');
@@ -783,7 +780,12 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
       undefined,
       { clientScriptBody: rawScript },
     );
-    const body = compileTemplate(source, subComponentNames, undefined, undefined, {
+    const localServerActionNames = new Set(
+      serverRpcBindings
+        .filter((binding) => actionPropNames.has(binding.localName))
+        .map((binding) => binding.localName),
+    );
+    const body = compileTemplate(source, subComponentNames, localServerActionNames, undefined, {
       clientScriptBody: rawScript,
       liveTemplateNames: clientTemplatePlan.reactiveNames,
     });
@@ -801,7 +803,7 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
         })
       : '';
     const componentClientScriptLine = componentClientScript
-      ? `__parts.push(\`<script data-k-props="\${__esc(encodeURIComponent(JSON.stringify(${PROPS_BAG_NAME} || {})))}">${escapeTemplateLiteral(componentClientScript)}</script>\`);`
+      ? `__parts.push('<script data-k-props="' + __esc(encodeURIComponent(JSON.stringify(${PROPS_BAG_NAME} || {}))) + '">' + ${JSON.stringify(componentClientScript)} + '</script>');`
       : '';
     const scopedBody = [
       bodyLines[0],
@@ -812,14 +814,6 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
       ...bodyLines.slice(safeInsertIndex)
     ].join('\n');
 
-    // The compiler-injected `props` binding does double duty: it is
-    // both callable (`props()` returns the bag — used by typed
-    // destructure in component scripts) and indexable (`props.title`
-    // — used by template references like `{props.title}`). The
-    // `Object.assign(callable, bag)` used to attach every bag key
-    // as an own property of the function so both forms resolved to
-    // the same data, but that collides with built-in read-only
-    // function properties like `.name` when a component accepts a
     // prop with the same key. A proxy over the callable keeps both
     // forms working without mutating function internals.
     //
@@ -1031,6 +1025,33 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     return Array.from(bindings.values());
   }
 
+  function collectServerActionBindings(componentNames: Map<string, string>): ComponentServerRpcBinding[] {
+    return collectServerRpcBindings(componentNames).filter((binding) => {
+      for (const [fileName, meta] of componentImportCache.entries()) {
+        if (meta.serverRpcBindings.includes(binding) && getActionPropNames(fileName).has(binding.localName)) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  function invalidate(fileNameOrPath: string): void {
+    for (const [k, v] of resolvedFiles.entries()) {
+      if (k === fileNameOrPath || v === fileNameOrPath) {
+        compiledComponentCache.delete(k);
+        componentStyleCache.delete(k);
+        componentActionCache.delete(k);
+        componentImportCache.delete(k);
+        resolvedFiles.delete(k);
+      }
+    }
+    compiledComponentCache.delete(fileNameOrPath);
+    componentStyleCache.delete(fileNameOrPath);
+    componentActionCache.delete(fileNameOrPath);
+    componentImportCache.delete(fileNameOrPath);
+  }
+
   return {
     ensureCompiled,
     collectComponentMap,
@@ -1040,6 +1061,8 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     getCompiledComponents,
     getServerImports,
     collectServerRpcBindings,
+    collectServerActionBindings,
     getResolvedFiles,
+    invalidate,
   };
 }

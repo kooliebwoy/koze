@@ -107,7 +107,7 @@ export const SVELTE_UPSTREAM_TEST_SUITES: SvelteUpstreamSuite[] = [
     fileCount: 168,
     status: 'converted-pass',
     notes: 'Kuratchi-equivalent legacy parser behavior is covered through SFC extraction, doctype/comment prefixes, single top-level script enforcement, raw style/script handling, comments, tags, attributes, native control-flow blocks, expressions, and slot replacement. Legacy Svelte parser AST shape is not a compatibility target.',
-    localEvidence: ['test/compiler-svelte-corpus.test.ts', 'test/svelte-parity.test.ts'],
+    localEvidence: ['test/template-parser.test.ts', 'test/svelte-parity.test.ts'],
   },
   {
     scope: 'svelte',
@@ -117,7 +117,7 @@ export const SVELTE_UPSTREAM_TEST_SUITES: SvelteUpstreamSuite[] = [
     fileCount: 49,
     status: 'converted-pass',
     notes: 'Kuratchi-equivalent modern parser behavior is covered through quote/brace-aware tag scanning, greater-than comparisons in attributes, nested object/template-literal expressions, raw style blocks, component tags, spreads, and native JS control flow. Svelte AST output parity remains intentionally out of scope.',
-    localEvidence: ['test/compiler-svelte-corpus.test.ts', 'test/svelte-parity.test.ts'],
+    localEvidence: ['test/template-parser.test.ts', 'test/svelte-parity.test.ts'],
   },
   {
     scope: 'svelte',
@@ -145,7 +145,7 @@ export const SVELTE_UPSTREAM_TEST_SUITES: SvelteUpstreamSuite[] = [
     fileCount: 163,
     status: 'converted-pass',
     notes: 'Kuratchi-equivalent browser runtime behavior is covered: bind:value, bind:checked, reactive text/attributes, event expressions, idempotent init, conditional blocks, raw HTML rerendering, loop-local hydration scopes, channel invalidation, Capn Web AsyncValue success/error state, and enhanced forms. Svelte lifecycle/action/transition APIs are intentional divergences.',
-    localEvidence: ['test/template-components.test.ts', 'test/compiler-integration-reactivity.test.ts', 'test/browser-hydration.test.ts'],
+    localEvidence: ['test/template-components.test.ts', 'test/template-reactivity.test.ts', 'test/browser-hydration.test.ts'],
   },
   {
     scope: 'svelte',
@@ -164,7 +164,7 @@ export const SVELTE_UPSTREAM_TEST_SUITES: SvelteUpstreamSuite[] = [
     fileCount: 13,
     status: 'converted-pass',
     notes: 'Kuratchi-equivalent production behavior is covered: build-mode Vite transforms set client environment constants to production values and emit compact runtime scripts, while package check/build covers production TypeScript output.',
-    localEvidence: ['test/vite/client-first-top-script.test.ts', 'test/compiler-typescript-script.test.ts'],
+    localEvidence: ['test/vite/client-first-top-script.test.ts'],
   },
   {
     scope: 'svelte',
@@ -192,7 +192,7 @@ export const SVELTE_UPSTREAM_TEST_SUITES: SvelteUpstreamSuite[] = [
     fileCount: 348,
     status: 'converted-pass',
     notes: 'Every upstream SSR fixture ID is classified with no gaps. Overlapping render behavior is executable through normalized Kuratchi-vs-Svelte parity tests, while Svelte-only syntax such as snippets, runes, actions, and boundaries is explicitly marked divergence.',
-    localEvidence: ['test/svelte-parity.test.ts', 'test/runtime-generated-worker.test.ts', 'test/fixtures/upstream-parity/svelte-fixtures.ts'],
+    localEvidence: ['test/svelte-parity.test.ts', 'test/source-map.test.ts', 'test/fixtures/upstream-parity/svelte-fixtures.ts'],
   },
   {
     scope: 'svelte',
@@ -219,7 +219,7 @@ export const SVELTE_UPSTREAM_TEST_SUITES: SvelteUpstreamSuite[] = [
     fixtureCount: 28,
     fileCount: 58,
     status: 'converted-pass',
-    notes: 'Kuratchi-equivalent source maps are covered for Vite route modules, repeated template expressions, layout/app virtual modules, browser client fragments, generated worker virtual modules, and legacy compiler routes output. Browser $server RPC stubs intentionally do not embed server source maps to avoid leaking server code into client bundles.',
+    notes: 'Koze-equivalent source maps are covered for Vite route modules, repeated template expressions, layout/app virtual modules, browser client fragments, and Worker virtual modules. Browser $server RPC stubs intentionally do not embed server source maps to avoid leaking server code into client bundles.',
     localEvidence: ['test/source-map.test.ts'],
   },
   {
@@ -238,7 +238,7 @@ export const SVELTE_UPSTREAM_TEST_SUITES: SvelteUpstreamSuite[] = [
     fixtureCount: 0,
     fileCount: 10,
     status: 'converted-pass',
-    notes: 'Kuratchi-equivalent type behavior is covered by a real TypeScript harness: virtual modules, generated app.d.ts output, app locals, workflow-name narrowing, component props, schema row types, typed channel RPC async-values, $server/* RPC imports, and runtime route/action/RPC/API module contracts.',
+    notes: 'Koze-equivalent type behavior is covered by a real TypeScript harness: virtual modules, generated app.d.ts output, app locals, component props, schema row types, typed channel RPC async-values, and $server/* RPC imports.',
     localEvidence: ['test/virtual-modules.test.ts', 'test/type-generator.test.ts'],
   },
   {
@@ -270,8 +270,8 @@ export const SVELTEKIT_UPSTREAM_TEST_APPS: SvelteKitUpstreamApp[] = [
     testFileCount: 3,
     routeFileCount: 102,
     status: 'converted-pass',
-    notes: 'Kuratchi-equivalent async behavior is covered: AsyncValue success/error state, Capn Web route/server RPC, schema validation failures, enhanced form lifecycle, redirect/error handling, browser invalidation, workflow polling, and streaming SSR boundaries.',
-    localEvidence: ['test/runtime-channel.test.ts', 'test/runtime-async-value.test.ts', 'test/runtime-generated-worker.test.ts', 'test/compiler-typescript-script.test.ts', 'test/browser-hydration.test.ts', 'test/runtime-workflow-poll.test.ts', 'test/runtime-stream.test.ts'],
+    notes: 'Kuratchi-equivalent async behavior is covered: AsyncValue success/error state, Capn Web route/server RPC, schema validation failures, enhanced form lifecycle, redirect/error handling, browser invalidation, and streaming SSR boundaries.',
+    localEvidence: ['test/runtime-channel.test.ts', 'test/runtime-async-value.test.ts', 'test/vite/client-first-top-script.test.ts', 'test/browser-hydration.test.ts', 'test/runtime-stream.test.ts'],
   },
   {
     scope: 'sveltekit',
@@ -281,7 +281,7 @@ export const SVELTEKIT_UPSTREAM_TEST_APPS: SvelteKitUpstreamApp[] = [
     routeFileCount: 927,
     status: 'converted-pass',
     notes: 'Kuratchi-equivalent basics are mapped to concrete parity fixtures: routing, load, layouts, form actions, API routes, RPC, middleware, errors, assets, head handling, cookies, navigation, and Cloudflare adapter non-goals.',
-    localEvidence: ['test/sveltekit-parity.test.ts', 'test/runtime-generated-worker.test.ts', 'test/router.test.ts'],
+    localEvidence: ['test/sveltekit-parity.test.ts', 'test/vite/client-first-top-script.test.ts', 'test/router.test.ts'],
   },
   {
     scope: 'sveltekit',
@@ -291,7 +291,7 @@ export const SVELTEKIT_UPSTREAM_TEST_APPS: SvelteKitUpstreamApp[] = [
     routeFileCount: 21,
     status: 'converted-pass',
     notes: 'Kuratchi-equivalent dev-only behavior is covered: client/server virtual import boundaries are enforced, client environment values are serialized, $server modules compile to browser-safe channel stubs without leaking cloudflare:workers or secret references, and Vite client fragment invalidation is tested. SvelteKit optimizeDeps-specific assertions are intentional non-goals.',
-    localEvidence: ['test/compiler-typescript-script.test.ts', 'test/parser-kuratchi-environment.test.ts', 'test/server-module-virtual-imports.test.ts', 'test/vite/client-first-top-script.test.ts'],
+    localEvidence: ['test/client-script-environment.test.ts', 'test/server-module-virtual-imports.test.ts', 'test/vite/client-first-top-script.test.ts'],
   },
   {
     scope: 'sveltekit',
@@ -328,7 +328,7 @@ export const SVELTEKIT_UPSTREAM_TEST_APPS: SvelteKitUpstreamApp[] = [
     routeFileCount: 0,
     status: 'converted-pass',
     notes: 'Kuratchi-native option behavior is covered: static asset prefixes, wrangler ASSETS sync, CSP nonce substitution/stamping, security headers, trailing-slash route matching, and virtual module config surfaces. SvelteKit-specific config shape/preload semantics are intentional non-goals.',
-    localEvidence: ['test/compiler-worker-entrypoints.test.ts', 'test/runtime-generated-worker.test.ts', 'test/runtime-security.test.ts', 'test/virtual-modules.test.ts', 'test/runtime-access.test.ts'],
+    localEvidence: ['test/vite/client-first-top-script.test.ts', 'test/virtual-modules.test.ts', 'test/runtime-access.test.ts'],
   },
   {
     scope: 'sveltekit',
@@ -337,8 +337,8 @@ export const SVELTEKIT_UPSTREAM_TEST_APPS: SvelteKitUpstreamApp[] = [
     testFileCount: 2,
     routeFileCount: 16,
     status: 'converted-pass',
-    notes: 'Kuratchi-relevant option-2 behavior is covered: static assets and prefixes, Capn Web channel/RPC, workflow polling directives, and streaming SSR boundary serialization. SvelteKit service-worker and bundleStrategy option behavior are intentional non-goals.',
-    localEvidence: ['test/runtime-generated-worker.test.ts', 'test/runtime-channel.test.ts', 'test/runtime-workflow-poll.test.ts', 'test/runtime-stream.test.ts'],
+    notes: 'Kuratchi-relevant option-2 behavior is covered by Capn Web channel/RPC and streaming SSR boundary serialization. SvelteKit service-worker and bundleStrategy option behavior are intentional non-goals.',
+    localEvidence: ['test/runtime-channel.test.ts', 'test/runtime-stream.test.ts'],
   },
   {
     scope: 'sveltekit',
@@ -357,7 +357,7 @@ export const SVELTEKIT_UPSTREAM_TEST_APPS: SvelteKitUpstreamApp[] = [
     routeFileCount: 3,
     status: 'intentional-divergence',
     notes: 'SvelteKit prerendered static error pages are not a Kuratchi Worker runtime target. Kuratchi custom error pages are dynamic Worker responses and already have runtime coverage.',
-    localEvidence: ['test/runtime-generated-worker.test.ts', 'test/fixtures/sveltekit-parity/manifest.ts'],
+    localEvidence: ['test/vite/client-first-top-script.test.ts', 'test/fixtures/sveltekit-parity/manifest.ts'],
   },
   {
     scope: 'sveltekit',

@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import ts from 'typescript';
 
 import { parseImportStatement } from './import-linking.js';
-import { isKuratchiVirtualModule, resolveKuratchiVirtualModule, validateKuratchiVirtualModuleImport } from './virtual-modules.js';
+import { isKozeVirtualModule, resolveKozeVirtualModule, validateKozeVirtualModuleImport } from './virtual-modules.js';
 
 export interface ServerModuleCompiler {
   toModuleSpecifier(fromFileAbs: string, toFileAbs: string): string;
@@ -14,7 +14,6 @@ export interface ServerModuleCompiler {
 interface CreateServerModuleCompilerOptions {
   projectDir: string;
   srcDir: string;
-  doHandlerProxyPaths: Map<string, string>;
   isDev: boolean;
   writeFile: (filePath: string, content: string) => void;
   emitJs?: boolean;
@@ -74,15 +73,15 @@ function validateServerVirtualImports(source: string): void {
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const parsed = parseImportStatement(statement.getText(sourceFile));
-    if (!parsed.moduleSpecifier || !isKuratchiVirtualModule(parsed.moduleSpecifier)) continue;
-    validateKuratchiVirtualModuleImport(parsed.moduleSpecifier, parsed.bindings, parsed.namespaceImport, 'server');
+    if (!parsed.moduleSpecifier || !isKozeVirtualModule(parsed.moduleSpecifier)) continue;
+    validateKozeVirtualModuleImport(parsed.moduleSpecifier, parsed.bindings, parsed.namespaceImport, 'server');
   }
 }
 
 export function createServerModuleCompiler(
   options: CreateServerModuleCompilerOptions,
 ): ServerModuleCompiler {
-  const { projectDir, srcDir, doHandlerProxyPaths, isDev, writeFile, emitJs = false } = options;
+  const { projectDir, srcDir, isDev, writeFile, emitJs = false } = options;
   const transformedServerModules = new Map<string, string>();
   const modulesOutDir = path.join(projectDir, '.koze', 'modules');
   const normalizedProjectDir = projectDir.replace(/\\/g, '/');
@@ -93,16 +92,9 @@ export function createServerModuleCompiler(
     return emitJs ? rel : stripSourceExtension(rel);
   }
 
-  function resolveDoProxyTarget(absPath: string): string | null {
-    const normalizedNoExt = absPath.replace(/\\/g, '/').replace(/\.[^.\/]+$/, '');
-    const proxyNoExt = doHandlerProxyPaths.get(normalizedNoExt);
-    if (!proxyNoExt) return null;
-    return resolveExistingModuleFile(proxyNoExt) ?? (fs.existsSync(proxyNoExt + '.ts') ? proxyNoExt + '.ts' : null);
-  }
-
   function resolveImportTarget(importerAbs: string, spec: string): string | null {
     // Handle koze:* virtual modules — resolved at rewrite time, not here
-    if (isKuratchiVirtualModule(spec)) {
+    if (isKozeVirtualModule(spec)) {
       return null;
     }
 
@@ -148,15 +140,12 @@ export function createServerModuleCompiler(
     const devAliases = extractKuratchiEnvironmentAliases(source);
     const rewriteSpecifier = (spec: string): string => {
       // Rewrite koze:* virtual modules to koze runtime paths
-      if (isKuratchiVirtualModule(spec)) {
-        return resolveKuratchiVirtualModule(spec);
+      if (isKozeVirtualModule(spec)) {
+        return resolveKozeVirtualModule(spec);
       }
 
       const target = resolveImportTarget(resolved, spec);
       if (!target) return spec;
-
-      const doProxyTarget = resolveDoProxyTarget(target);
-      if (doProxyTarget) return toModuleSpecifier(outPath, doProxyTarget);
 
       const normalizedTarget = target.replace(/\\/g, '/');
       const inProject = normalizedTarget.startsWith(normalizedProjectDir + '/');
@@ -201,8 +190,8 @@ export function createServerModuleCompiler(
 
   function resolveCompiledImportPath(origPath: string, importerDir: string, outFileDir: string): string {
     // Rewrite koze:* virtual modules to koze runtime paths
-    if (isKuratchiVirtualModule(origPath)) {
-      return resolveKuratchiVirtualModule(origPath);
+    if (isKozeVirtualModule(origPath)) {
+      return resolveKozeVirtualModule(origPath);
     }
 
     const isBareModule = !origPath.startsWith('.') && !origPath.startsWith('/') && !origPath.startsWith('$');
@@ -218,8 +207,7 @@ export function createServerModuleCompiler(
       absImport = path.resolve(importerDir, origPath);
     }
 
-    const doProxyTarget = resolveDoProxyTarget(absImport);
-    const target = doProxyTarget ?? transformModule(absImport);
+    const target = transformModule(absImport);
 
     let relPath = path.relative(outFileDir, target).replace(/\\/g, '/');
     if (!relPath.startsWith('.')) relPath = './' + relPath;

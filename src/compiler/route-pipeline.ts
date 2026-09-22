@@ -386,7 +386,7 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
     );
   }
 
-  // TypeScript is preserved — wrangler's esbuild handles transpilation
+  // TypeScript is preserved — Vite/esbuild handles transpilation
 
   const scriptReturnVars = parsed.script
     ? parsed.dataVars.filter((name) =>

@@ -5,8 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Buffer } from 'node:buffer';
 
-import { compile } from '../src/compiler/index.js';
-import { kuratchi } from '../src/vite/index.js';
+import { koze } from '../src/vite/index.js';
 import type { KuratchiSourceMap } from '../src/compiler/source-map.js';
 
 const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -37,7 +36,7 @@ function createTempProject(name: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `kuratchi-sourcemap-${name}-`));
   fs.mkdirSync(path.join(dir, 'src', 'routes'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'src', 'server'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'src', 'worker.ts'), 'export { default } from "koze:worker";\n', 'utf-8');
+  fs.writeFileSync(path.join(dir, 'src', 'worker.ts'), `import { handleRequest } from 'koze:worker';\nexport default { fetch: handleRequest };\n`, 'utf-8');
   return dir;
 }
 
@@ -51,7 +50,7 @@ function leadingHash(filePath: string): string {
 }
 
 async function setupPlugin(projectDir: string) {
-  const plugin = kuratchi()[0];
+  const plugin = koze()[0];
   const config: MinimalResolvedConfig = {
     root: projectDir,
     command: 'serve',
@@ -69,7 +68,7 @@ async function setupPlugin(projectDir: string) {
     await (plugin.configResolved as unknown as (config: MinimalResolvedConfig) => Promise<void> | void)(config);
   }
   const load = plugin.load;
-  if (typeof load !== 'function') throw new Error('Expected kuratchi plugin load hook');
+  if (typeof load !== 'function') throw new Error('Expected Koze plugin load hook');
   const ctx = {
     addWatchFile(_file: string) {},
   };
@@ -152,7 +151,7 @@ function lineIndex(source: string, needle: string): number {
   return source.slice(0, idx).split(/\r?\n/).length - 1;
 }
 
-describe('Kuratchi source maps', () => {
+describe('Koze source maps', () => {
   const projectDirs: string[] = [];
 
   afterEach(() => {
@@ -278,7 +277,7 @@ const lang = 'en';
     expect(appMap.sourcesContent[0]).toBe(appSource);
   });
 
-  test('maps generated worker virtual modules to convention source modules', async () => {
+  test('keeps the Worker handler free of generated platform exports and source ownership', async () => {
     const projectDir = createTempProject('worker-module');
     projectDirs.push(projectDir);
     fs.mkdirSync(path.join(projectDir, 'src', 'server', 'ai'), { recursive: true });
@@ -296,25 +295,9 @@ const lang = 'en';
     const plugin = await setupPlugin(projectDir);
     const workerCode = await plugin.load('\0koze:worker');
     expect(typeof workerCode).toBe('string');
-    const map = extractInlineSourceMap(workerCode as string);
-
-    expect(map.sources.some((source) => source.endsWith('/session.agent.js'))).toBe(true);
-    expect(map.sourcesContent.some((source) => source.includes('class SessionAgent'))).toBe(true);
-    expect(map.mappings.length).toBeGreaterThan(0);
+    expect(workerCode).toContain("export { handle as handleRequest } from 'koze:dispatch'");
+    expect(workerCode).not.toContain('SessionAgent');
+    expect(workerCode).not.toContain('sourceMappingURL');
   });
 
-  test('emits source maps for legacy compiler routes output without exposing server RPC stubs', async () => {
-    const projectDir = createTempProject('legacy-routes');
-    projectDirs.push(projectDir);
-    const routePath = path.join(projectDir, 'src', 'routes', 'page.koze');
-    fs.writeFileSync(routePath, '<script>const title = "Legacy";</script><h1>{title}</h1>', 'utf-8');
-
-    await compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.koze', 'routes.ts'), 'utf-8');
-    const map = extractInlineSourceMap(routesCode);
-
-    expect(map.sources).toContain(routePath.replace(/\\/g, '/'));
-    expect(map.sourcesContent.some((source) => source.includes('const title = "Legacy"'))).toBe(true);
-    expect(map.mappings.length).toBeGreaterThan(0);
-  });
 });

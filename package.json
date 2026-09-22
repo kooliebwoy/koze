@@ -1,7 +1,7 @@
 {
     "name": "@kuratchi/koze",
-    "version": "0.0.1",
-    "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
+    "version": "0.0.3",
+    "description": "The HTML-first full-stack framework for native Cloudflare Workers",
     "license": "MIT",
     "type": "module",
     "main": "./dist/index.js",
@@ -20,7 +20,10 @@
         "check": "tsc -p tsconfig.build.json --noEmit",
         "bench:router": "bun run bench/router-benchmark.ts",
         "bench:compiler": "bun run bench/compiler-benchmark.ts",
-        "test": "vitest run",
+        "test": "vitest run && vite build --config test/vite/integration/native-worker/vite.config.ts && vitest run --config vitest.workerd.config.ts",
+        "test:node": "vitest run",
+        "test:native-build": "vite build --config test/vite/integration/native-worker/vite.config.ts",
+        "test:workerd": "vitest run --config vitest.workerd.config.ts",
         "test:watch": "vitest",
         "prepublishOnly": "npm run build"
     },
@@ -49,10 +52,6 @@
             "types": "./dist/runtime/middleware-virtual.d.ts",
             "import": "./dist/runtime/middleware-virtual.js"
         },
-        "./runtime/do.js": {
-            "types": "./dist/runtime/do.d.ts",
-            "import": "./dist/runtime/do.js"
-        },
         "./runtime/schema.js": {
             "types": "./dist/runtime/schema.d.ts",
             "import": "./dist/runtime/schema.js"
@@ -69,21 +68,9 @@
             "types": "./dist/runtime/environment.d.ts",
             "import": "./dist/runtime/environment.js"
         },
-        "./runtime/assets.js": {
-            "types": "./dist/runtime/assets.d.ts",
-            "import": "./dist/runtime/assets.js"
-        },
         "./runtime/content.js": {
             "types": "./dist/runtime/content.d.ts",
             "import": "./dist/runtime/content.js"
-        },
-        "./runtime/workflow.js": {
-            "types": "./dist/runtime/workflow.d.ts",
-            "import": "./dist/runtime/workflow.js"
-        },
-        "./runtime/pipeline.js": {
-            "types": "./dist/runtime/pipeline.d.ts",
-            "import": "./dist/runtime/pipeline.js"
         },
         "./runtime/stream.js": {
             "types": "./dist/runtime/stream.d.ts",
@@ -92,18 +79,6 @@
         "./runtime/security.js": {
             "types": "./dist/runtime/security.d.ts",
             "import": "./dist/runtime/security.js"
-        },
-        "./runtime/access.js": {
-            "types": "./dist/runtime/access.d.ts",
-            "import": "./dist/runtime/access.js"
-        },
-        "./runtime/access-virtual.js": {
-            "types": "./dist/runtime/access-virtual.d.ts",
-            "import": "./dist/runtime/access-virtual.js"
-        },
-        "./runtime/generated-worker.js": {
-            "types": "./dist/runtime/generated-worker.d.ts",
-            "import": "./dist/runtime/generated-worker.js"
         },
         "./runtime/channel.js": {
             "types": "./dist/runtime/channel.d.ts",
@@ -149,21 +124,9 @@
             "types": "./dist/runtime/schema.d.ts",
             "import": "./dist/runtime/schema.js"
         },
-        "./workflow": {
-            "types": "./dist/runtime/workflow.d.ts",
-            "import": "./dist/runtime/workflow.js"
-        },
-        "./pipeline": {
-            "types": "./dist/runtime/pipeline.d.ts",
-            "import": "./dist/runtime/pipeline.js"
-        },
         "./security": {
             "types": "./dist/runtime/security.d.ts",
             "import": "./dist/runtime/security.js"
-        },
-        "./access": {
-            "types": "./dist/runtime/access.d.ts",
-            "import": "./dist/runtime/access.js"
         },
         "./compiler": {
             "types": "./dist/compiler/index.d.ts",
@@ -197,7 +160,6 @@
         "capnweb": "^0.7.0",
         "esbuild": "^0.25.0",
         "github-slugger": "^2.0.0",
-        "jose": "^6.2.0",
         "mdast-util-to-string": "^4.0.0",
         "rehype-sanitize": "^6.0.0",
         "rehype-stringify": "^10.0.1",
@@ -239,7 +201,7 @@
     },
     "devDependencies": {
         "@cloudflare/vite-plugin": "^1.0.0",
-        "@cloudflare/vitest-pool-workers": "^0.15.0",
+        "@cloudflare/vitest-plugin": "^1.0.0",
         "@cloudflare/workers-types": "^4.20260223.0",
         "@types/node": "^24.4.0",
         "happy-dom": "^20.9.0",

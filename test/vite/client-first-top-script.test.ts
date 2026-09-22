@@ -3,13 +3,13 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { kuratchi } from '../../src/vite/index.js';
+import { koze } from '../../src/vite/index.js';
 
 function createTempProject(name: string): string {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), `kuratchi-vite-${name}-`));
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), `koze-vite-${name}-`));
 	fs.mkdirSync(path.join(dir, 'src', 'routes'), { recursive: true });
 	fs.mkdirSync(path.join(dir, 'src', 'server'), { recursive: true });
-	fs.writeFileSync(path.join(dir, 'src', 'worker.ts'), 'export { default } from "koze:worker";\n', 'utf-8');
+	fs.writeFileSync(path.join(dir, 'src', 'worker.ts'), `import { handleRequest } from 'koze:worker';\nexport default { fetch: handleRequest };\n`, 'utf-8');
 	return dir;
 }
 
@@ -37,7 +37,7 @@ type MinimalResolvedConfig = {
 };
 
 async function setupPlugin(projectDir: string, command: 'serve' | 'build' = 'serve') {
-	const plugin = kuratchi()[0];
+	const plugin = koze()[0];
 	const config: MinimalResolvedConfig = {
 		root: projectDir,
 		command,
@@ -56,8 +56,8 @@ async function setupPlugin(projectDir: string, command: 'serve' | 'build' = 'ser
 	}
 	const load = plugin.load;
 	const handleHotUpdate = plugin.handleHotUpdate;
-	if (typeof load !== 'function') throw new Error('Expected kuratchi plugin load hook');
-	if (typeof handleHotUpdate !== 'function') throw new Error('Expected kuratchi plugin hot update hook');
+	if (typeof load !== 'function') throw new Error('Expected Koze plugin load hook');
+	if (typeof handleHotUpdate !== 'function') throw new Error('Expected Koze plugin hot update hook');
 	const ctx = {
 		addWatchFile(_file: string) {},
 	};
@@ -158,6 +158,96 @@ describe('koze/vite client-first leading script emit', () => {
 		expect(routesModule).toContain('{ pattern: "/api/files/*path"');
 		expect(routesModule).toContain('"paramName":"slug"');
 		expect(routesModule).toContain('"paramName":"path"');
+	});
+
+	test('registers server form actions imported directly by a component', async () => {
+		const projectDir = createTempProject('component-owned-form-action');
+		projectDirs.push(projectDir);
+		fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
+		const routePath = path.join(projectDir, 'src', 'routes', 'page.koze');
+		fs.writeFileSync(
+			path.join(projectDir, 'src', 'server', 'notes.ts'),
+			`export async function addNote() { return null; }\n`,
+			'utf-8',
+		);
+		fs.writeFileSync(
+			path.join(projectDir, 'src', 'lib', 'note-form.koze'),
+			`<script>\nimport { addNote } from '$server/notes';\n</script>\n<form action={addNote} method="POST"><button>Save</button></form>`,
+			'utf-8',
+		);
+		fs.writeFileSync(
+			routePath,
+			`<script>\nimport NoteForm from '$lib/note-form.koze';\n</script>\n<NoteForm />`,
+			'utf-8',
+		);
+
+		const plugin = await setupPlugin(projectDir);
+		const routeModule = await plugin.load(`\0koze:route/${routeHash(routePath)}`);
+
+		expect(routeModule).toContain('name="_action" value="addNote"');
+		expect(routeModule).toContain('"addNote": addNote');
+		expect(routeModule).not.toContain('String(addNote)');
+	});
+
+	test('emits lazy route loaders in both development and production manifests', async () => {
+		for (const command of ['serve', 'build'] as const) {
+			const projectDir = createTempProject(`lazy-route-manifest-${command}`);
+			projectDirs.push(projectDir);
+			const indexPath = path.join(projectDir, 'src', 'routes', 'index.koze');
+			const inmatePath = path.join(projectDir, 'src', 'routes', 'inmates', 'index.koze');
+			fs.mkdirSync(path.dirname(inmatePath), { recursive: true });
+			fs.writeFileSync(indexPath, '<main>Dashboard</main>', 'utf-8');
+			fs.writeFileSync(inmatePath, '<main>Inmates</main>', 'utf-8');
+
+			const plugin = await setupPlugin(projectDir, command);
+			const routesModule = await plugin.load('\0koze:routes');
+
+			expect(routesModule).toContain(
+				`load: () => import(${JSON.stringify(`koze:route/${routeHash(indexPath)}`)})`,
+			);
+			expect(routesModule).toContain(
+				`load: () => import(${JSON.stringify(`koze:route/${routeHash(inmatePath)}`)})`,
+			);
+			expect(routesModule).not.toContain('import * as r');
+			expect(routesModule).not.toContain('module: r');
+		}
+	});
+
+	test('emits lazy server RPC loaders with literal specifiers in development and production', async () => {
+		for (const command of ['serve', 'build'] as const) {
+			const projectDir = createTempProject(`lazy-rpc-map-${command}`);
+			projectDirs.push(projectDir);
+			fs.writeFileSync(
+				path.join(projectDir, 'src', 'server', 'inmates.ts'),
+				'export async function listInmates() { return []; }\n',
+				'utf-8',
+			);
+			fs.writeFileSync(
+				path.join(projectDir, 'src', 'routes', 'index.koze'),
+				`<script>
+import { listInmates } from '$server/inmates';
+</script>
+<button onClick={listInmates()}>Load</button>`,
+				'utf-8',
+			);
+
+			const originalVitest = process.env.VITEST;
+			if (command === 'serve') delete process.env.VITEST;
+			let plugin: Awaited<ReturnType<typeof setupPlugin>>;
+			try {
+				plugin = await setupPlugin(projectDir, command);
+			} finally {
+				if (originalVitest === undefined) delete process.env.VITEST;
+				else process.env.VITEST = originalVitest;
+			}
+			const rpcMapModule = await plugin.load('\0koze:rpc-map');
+
+			expect(rpcMapModule).toContain('"inmates": () => import("$server/inmates")');
+			expect(rpcMapModule).toContain('const load = MAP[subpath];');
+			expect(rpcMapModule).toContain('return load ? load() : null;');
+			expect(rpcMapModule).not.toContain('import * as __rpc_');
+			expect(rpcMapModule).not.toContain('@vite-ignore');
+		}
 	});
 
 	test('uses production transforms for build-mode client fragments and app runtime', async () => {
@@ -499,7 +589,7 @@ function boolText(value) {
 		);
 
 		const plugin = await setupPlugin(projectDir);
-		const rpcModule = await plugin.load('virtual:kuratchi-rpc/api.ts');
+		const rpcModule = await plugin.load('virtual:koze-rpc/api.ts');
 
 		expect(rpcModule).toContain(`import { createKuratchiRpcAsyncValue } from '@kuratchi/koze/runtime/channel.js';`);
 		expect(rpcModule).toContain(`return createKuratchiRpcAsyncValue({ carrier: 'capnweb-http', target: 'server', op: rpcId, args });`);
@@ -508,7 +598,7 @@ function boolText(value) {
 		expect(rpcModule).not.toContain('SECRET_TOKEN');
 	});
 
-	test('synthesizes RPC-safe Durable Object exports from .do.ts classes', async () => {
+	test('does not synthesize Worker exports from convention-shaped server files', async () => {
 		const projectDir = createTempProject('worker-do-export');
 		projectDirs.push(projectDir);
 		fs.writeFileSync(path.join(projectDir, 'src', 'routes', 'page.koze'), '<div>Hello</div>', 'utf-8');
@@ -542,14 +632,12 @@ export default class OrgAuth extends DurableObject {
 		const plugin = await setupPlugin(projectDir);
 		const workerModule = await plugin.load('\0koze:worker');
 
-		expect(workerModule).toContain('export class OrgAuth extends __KozeDurableObject');
-		expect(workerModule).toContain('createUser(...args)');
-		expect(workerModule).toContain('alarm(...args)');
-		expect(workerModule).toContain('webSocketMessage(...args)');
-		expect(workerModule).not.toContain('hiddenMethod(...args)');
+		expect(workerModule).toContain("export { handle as handleRequest } from 'koze:dispatch'");
+		expect(workerModule).not.toContain('OrgAuth');
+		expect(workerModule).not.toContain('createUser');
 	});
 
-	test('rejects plural worker convention suffixes during Vite config', async () => {
+	test('treats former convention suffixes as ordinary server module names', async () => {
 		const projectDir = createTempProject('plural-worker-convention');
 		projectDirs.push(projectDir);
 		fs.mkdirSync(path.join(projectDir, 'src', 'server', 'ai'), { recursive: true });
@@ -559,8 +647,22 @@ export default class OrgAuth extends DurableObject {
 			'utf-8',
 		);
 
+		const plugin = await setupPlugin(projectDir);
+		const rpcModule = await plugin.load('virtual:koze-rpc/ai/session.agents.ts');
+		expect(rpcModule).toContain('export function SessionAgent(...args)');
+	});
+
+	test('rejects removed .kuratchi source files with rename guidance', async () => {
+		const projectDir = createTempProject('removed-extension');
+		projectDirs.push(projectDir);
+		fs.writeFileSync(
+			path.join(projectDir, 'src', 'routes', 'index.kuratchi'),
+			'<h1>Old source</h1>',
+			'utf-8',
+		);
+
 		await expect(setupPlugin(projectDir)).rejects.toThrow(
-			'use "session.agent.ts" instead of "session.agents.ts"',
+			'src/routes/index.kuratchi -> src/routes/index.koze',
 		);
 	});
 
@@ -741,5 +843,49 @@ const message = 'new';
 		expect(invalidated).toContain(newFragmentModule.id);
 		expect(created).toEqual([newFragmentModule]);
 		expect(sent).toEqual([{ type: 'full-reload' }]);
+	});
+
+	test('dynamically detects app.css and performs hot style updates without full reload', async () => {
+		const projectDir = createTempProject('hmr-css-update');
+		projectDirs.push(projectDir);
+		fs.writeFileSync(path.join(projectDir, 'src', 'routes', 'page.koze'), '<div>Hello</div>', 'utf-8');
+
+		const plugin = await setupPlugin(projectDir);
+
+		const appCssPath = path.join(projectDir, 'src', 'app.css');
+		fs.writeFileSync(appCssPath, 'body { color: red; }', 'utf-8');
+
+		const appModule = { id: '\0koze:app' };
+		const globalCssModule = { id: 'virtual:koze-global-css.js' };
+		const invalidated: string[] = [];
+		const sent: Array<{ type: string }> = [];
+
+		const updated = await plugin.handleHotUpdate({
+			file: appCssPath,
+			modules: [],
+			server: {
+				moduleGraph: {
+					getModuleById(id: string) {
+						if (id === '\0koze:app') return appModule;
+						if (id === 'virtual:koze-global-css.js') return globalCssModule;
+						return undefined;
+					},
+					invalidateModule(mod: { id: string }) {
+						invalidated.push(mod.id);
+					},
+				},
+				ws: {
+					send(payload: { type: string }) {
+						sent.push(payload);
+					},
+				},
+			},
+		} as never);
+
+		expect(invalidated).toContain('\0koze:app');
+		expect(invalidated).toContain('virtual:koze-global-css.js');
+		expect(sent).toHaveLength(0); // No hard full-reload sent for CSS
+		expect(updated).toContain(appModule);
+		expect(updated).toContain(globalCssModule);
 	});
 });

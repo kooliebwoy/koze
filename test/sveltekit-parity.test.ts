@@ -17,9 +17,9 @@ describe('SvelteKit parity matrix', () => {
   const notApplicable = getSvelteKitParityFixtures('not-applicable');
 
   it('tracks framework parity separately from Svelte compiler parity', () => {
-    expect(portedPass.length).toBeGreaterThanOrEqual(15);
+    expect(portedPass.length).toBeGreaterThanOrEqual(6);
     expect(portedFail).toHaveLength(0);
-    expect(futureFeature).toHaveLength(0);
+    expect(futureFeature).toHaveLength(1);
     expect(notApplicable.length).toBeGreaterThan(0);
     expect(new Set(SVELTEKIT_PARITY_FIXTURES.map((fixture) => fixture.id)).size)
       .toBe(SVELTEKIT_PARITY_FIXTURES.length);

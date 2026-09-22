@@ -1,5 +1,5 @@
 /**
- * `kuratchi create <project-name>` â€” scaffold a new Koze project
+ * `koze create <project-name>` — scaffold a new Koze project
  *
  * Interactive prompts for feature selection, then generates
  * a ready-to-run project with the selected stack.
@@ -66,7 +66,7 @@ export async function create(projectName?: string, flags: string[] = []) {
   console.log('\n⚡ Create a new Koze project\n');
 
   // Project name
-  const name = projectName || (autoYes ? 'my-kuratchi-app' : await ask('Project name', 'my-kuratchi-app'));
+  const name = projectName || (autoYes ? 'my-koze-app' : await ask('Project name', 'my-koze-app'));
 
   // Validate name
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
@@ -355,12 +355,10 @@ function genNotesDoHandler(): string {
 import { autoMigrate, kunii } from '@kuratchi/kunii';
 import { notesSchema, type Note } from '../schemas/notes';
 
-export default class NotesDO extends DurableObject {
-  static binding = 'NOTES_DO';
-
+export class NotesDO extends DurableObject<Env> {
   declare db: any;
 
-  constructor(ctx: DurableObjectState, env: any) {
+  constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     autoMigrate(ctx.storage, notesSchema);
     this.db = kunii(ctx.storage.sql, notesSchema);
@@ -386,14 +384,14 @@ function genNotesDb(): string {
 import type { Note } from '../schemas/notes';
 
 function getStub() {
-  return (env as any).NOTES_DO.get((env as any).NOTES_DO.idFromName('global'));
+  return env.NOTES_DO.getByName('global');
 }
 
 export async function getNotes(): Promise<Note[]> {
   return getStub().getNotes();
 }
 
-export async function addNote({ formData }: FormData): Promise<void> {
+export async function addNote({ formData }: { formData: FormData }): Promise<void> {
   const title = String(formData.get('title') || '').trim();
   if (!title) throw new Error('Note is required');
   await getStub().addNote(title);
@@ -851,17 +849,14 @@ if (!admin.isAuthenticated) {
 // Vite is the canonical (and only) Koze build pipeline. This
 // scaffolder emits a minimal project wired for `koze/vite`:
 //
-//   - `vite.config.ts` with the `koze()` plugin (auto-syncs
-//     `wrangler.jsonc`, discovers routes / containers / sandboxes /
-//     durable objects, provides `koze:*` virtual modules).
-//   - `src/worker.ts` — one-line re-export of `koze:worker`.
+//   - `vite.config.ts` with peer `koze()` and `cloudflare()` plugins.
+//   - `src/worker.ts` — the application-owned native Worker entrypoint.
 //   - `src/middleware.ts` — `defineMiddleware({ migrate, auth, ... })`,
 //     populated based on the picked features.
 //   - `src/app.css` — global stylesheet (when UI is enabled), imports
 //     `kuzan/styles/theme.css`. Auto-injected into the shell.
 //   - `src/routes/*.koze` — route files with the canonical extension.
-//   - `src/assets/styles.css` — static asset served from the root path
-//     via Wrangler's assets binding (verbatim, no plugins).
+//   - `src/assets/styles.css` — an explicitly configured static asset.
 function scaffoldVite(dir: string, opts: ScaffoldOptions) {
   const { orm, auth } = opts;
   const enableDO = opts.do;
@@ -890,7 +885,7 @@ function scaffoldVite(dir: string, opts: ScaffoldOptions) {
   write(dir, '.gitignore', genViteGitIgnore());
   write(dir, 'test/tsconfig.json', genViteTestTsConfig());
   write(dir, 'test/worker.test.ts', genWorkerTest());
-  write(dir, 'src/worker.ts', genViteWorker());
+  write(dir, 'src/worker.ts', genViteWorker(opts));
   write(dir, 'src/middleware.ts', genMiddleware(opts));
   if (opts.ui) write(dir, 'src/app.css', genAppCss());
   write(dir, 'src/assets/styles.css', genViteAssetsCss());
@@ -906,7 +901,7 @@ function scaffoldVite(dir: string, opts: ScaffoldOptions) {
 
   if (enableDO) {
     write(dir, 'src/schemas/notes.ts', genNotesSchema());
-    write(dir, 'src/server/notes.do.ts', genNotesDoHandler());
+    write(dir, 'src/server/notes-object.ts', genNotesDoHandler());
     write(dir, 'src/server/notes.ts', genNotesDb());
     write(dir, 'src/routes/notes/index.koze', genNotesPage());
     write(dir, 'test/durable-object.test.ts', genDurableObjectTest());
@@ -948,7 +943,7 @@ function genVitePackageJson(opts: ScaffoldOptions): string {
     dependencies: deps,
     devDependencies: {
       '@cloudflare/vite-plugin': '^1.0.0',
-      '@cloudflare/vitest-pool-workers': '^0.15.0',
+      '@cloudflare/vitest-plugin': '^1.0.0',
       '@cloudflare/workers-types': '^4.20250214.0',
       'vite': '^7.0.0',
       'vitest': '^4.1.0',
@@ -963,12 +958,13 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import { koze } from '@kuratchi/koze/vite';
 
 // The \`koze()\` plugin owns:
-//   - Route discovery (\`src/routes/**/*.koze\`)
-//   - Virtual modules (\`koze:worker\`, \`koze:request\`, etc.)
-//   - Auto-sync of \`wrangler.jsonc\` (containers, sandboxes, DOs, queues, assets)
+//   - Page discovery (\`src/routes/**/*.koze\`)
+//   - Fixed API route discovery (\`src/routes/api/**/*.{ts,js}\` -> \`/api/*\`)
+//   - Koze language virtual modules (\`koze:worker\`, \`koze:request\`, etc.)
 //   - Response-header security config via the \`security\` option
 //
-// The \`cloudflare()\` plugin runs the SSR module inside \`workerd\`
+// The peer \`cloudflare()\` plugin owns Worker configuration, bindings,
+// development, builds, and runs the application inside \`workerd\`
 // for dev/preview parity with production. The \`viteEnvironment.name\`
 // must be \`'ssr'\` so Vite's SSR build emits to the Worker entry.
 //
@@ -984,7 +980,7 @@ export default defineConfig({
 }
 
 function genViteVitestConfig(): string {
-  return `import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
+  return `import { cloudflareTest } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
 import { koze } from '@kuratchi/koze/vite';
 
@@ -1003,14 +999,11 @@ export default defineConfig({
 }
 
 function genViteWrangler(opts: ScaffoldOptions): string {
-  // Vite emits the final worker entry into \`dist/\`, but the
-  // \`koze()\` plugin rewrites \`main\` if necessary at build time.
-  // We keep the config minimal here and point at the source entry so
-  // \`wrangler dev\` (used for preview of the prod-shaped bundle) works.
   const compatibilityDate = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split('T')[0];
   const config: any = {
+    $schema: './node_modules/wrangler/config-schema.json',
     name: opts.name,
     main: 'src/worker.ts',
     compatibility_date: compatibilityDate,
@@ -1026,20 +1019,21 @@ function genViteWrangler(opts: ScaffoldOptions): string {
 
   if (opts.do) {
     config.durable_objects = { bindings: [{ name: 'NOTES_DO', class_name: 'NotesDO' }] };
-    config.migrations = [{ tag: 'v1', new_sqlite_classes: ['NotesDO'] }];
+    config.exports = { NotesDO: { type: 'durable-object', storage: 'sqlite' } };
   }
 
   return JSON.stringify(config, null, 2) + '\n';
 }
 
-function genViteWorker(): string {
-  // `koze:worker` is the virtual module synthesized by the
-  // `koze()` Vite plugin. It wires the dispatcher + middleware +
-  // route registry into the Workers `fetch` + `queue` exports. Re-export
-  // named classes too so Durable Objects, Workflows, and other convention
-  // classes are visible to Wrangler, Miniflare, and the Cloudflare test pool.
-  return `export { default } from 'koze:worker';
-export * from 'koze:worker';
+function genViteWorker(opts: ScaffoldOptions): string {
+  const nativeExports = opts.do
+    ? `export { NotesDO } from './server/notes-object';\n`
+    : '';
+  return `import { handleRequest } from 'koze:worker';
+
+${nativeExports}export default {
+  fetch: handleRequest,
+} satisfies ExportedHandler<Env>;
 `;
 }
 
@@ -1065,7 +1059,7 @@ function genViteTestTsConfig(): string {
     extends: '../tsconfig.json',
     compilerOptions: {
       moduleResolution: 'bundler',
-      types: ['@cloudflare/vitest-pool-workers'],
+      types: ['@cloudflare/vitest-plugin/types'],
     },
     include: [
       './**/*.ts',

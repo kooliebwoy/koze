@@ -2,7 +2,7 @@ import {
   SchemaValidationError,
   validateSchemaInput,
 } from './schema.js';
-import { KURATCHI_CHANNEL_PROBE_OP } from './channel-protocol.js';
+import { KOZE_CHANNEL_PROBE_OP } from './channel-protocol.js';
 
 export type KuratchiHostOperationKind = 'query' | 'mutation' | 'action' | 'session';
 
@@ -44,7 +44,7 @@ export function createKuratchiChannelHost(opts: KuratchiChannelHostOptions) {
 
   return {
     async invoke(input: KuratchiHostInvokeInput): Promise<KuratchiHostInvokeResult> {
-      if (input.op === KURATCHI_CHANNEL_PROBE_OP) {
+      if (input.op === KOZE_CHANNEL_PROBE_OP) {
         return {
           ok: true,
           value: true,

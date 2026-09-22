@@ -92,10 +92,8 @@ if (!user) {
   });
 
   it('leaves unknown data- attributes as-is (no fragment instrumentation)', () => {
-    // `data-poll` / `data-interval` were removed along with the fragment manifest
-    // infrastructure. Live workflow status now lives in the `koze:workflow`
-    // virtual module. This test guards against the compiler reintroducing any
-    // implicit data-* attribute handling.
+    // Koze does not assign hidden runtime behavior to arbitrary data attributes.
+    // This guards against reintroducing implicit polling instrumentation.
     const compiled = compileTemplate(
       `<section data-poll={getStatus(job.id)}>
   <strong>{job.status}</strong>

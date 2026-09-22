@@ -9,7 +9,7 @@ import {
   createKuratchiCapnWebRoot,
 } from '../src/runtime/channel-capnweb-host.js';
 import { invokeKuratchiChannelHost } from '../src/runtime/channel-host.js';
-import { KURATCHI_CHANNEL_PROBE_OP } from '../src/runtime/channel-protocol.js';
+import { KOZE_CHANNEL_PROBE_OP } from '../src/runtime/channel-protocol.js';
 import { schema } from '../src/runtime/schema.js';
 
 const originalWindow = globalThis.window;
@@ -158,10 +158,9 @@ describe('Kuratchi Channel runtime', () => {
     expect(window.__kozeChannel).toBeDefined();
     const value = window.__kozeChannel!.createRpcValue<string>({ op: 'rpc_again', args: [] });
     await expect(value).resolves.toBe('pong');
-    expect(dispatchEvent).toHaveBeenCalledTimes(2);
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
     expect(dispatchEvent.mock.calls.map(([event]) => (event as Event).type)).toEqual([
       'koze:invalidate-reads',
-      'kuratchi:invalidate-reads',
     ]);
   });
 
@@ -226,7 +225,7 @@ describe('Kuratchi Channel runtime', () => {
   test('invokes RPC through a Capn Web WebSocket channel', async () => {
     installBrowser(originalFetch);
     const { urls } = installMockWebSocket((frame) => {
-      if (frame.op === KURATCHI_CHANNEL_PROBE_OP) return { ok: true, value: true };
+      if (frame.op === KOZE_CHANNEL_PROBE_OP) return { ok: true, value: true };
 
       return invokeKuratchiChannelHost(
         {
@@ -294,10 +293,9 @@ describe('Kuratchi Channel runtime', () => {
     expect(todos.pending).toBe(true);
     await expect(todos).resolves.toEqual(['todo']);
     expect(todos.success).toBe(true);
-    expect(dispatchEvent).toHaveBeenCalledTimes(2);
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
     expect(dispatchEvent.mock.calls.map(([event]) => (event as Event).type)).toEqual([
       'koze:invalidate-reads',
-      'kuratchi:invalidate-reads',
     ]);
   });
 

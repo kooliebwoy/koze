@@ -1355,7 +1355,7 @@ function transformClientScriptBlock(
     openTag = openTag.replace(/<script\b/i, '<script type="module"');
   }
 
-  // TypeScript is preserved — wrangler's esbuild handles transpilation
+  // TypeScript is preserved — Vite/esbuild handles transpilation
   const needsReactiveRuntime = /\$\s*:/.test(body) || !!transformOptions.needsReactiveRuntime;
   if (!needsReactiveRuntime) {
     return `${openTag}${body}${closeTag}`;
@@ -1803,7 +1803,43 @@ function compileHtmlLineStatements(
   return segment ? [segment] : [];
 }
 
-import type { ClientRouteRegistry } from './client-module-pipeline.js';
+interface ClientRouteRegistry {
+  hasBindingReference(expression: string): boolean;
+  rewriteClientImport(importLine: string, importerDir: string): string | null;
+  registerEventHandler(
+    eventName: string,
+    expression: string,
+  ): { routeId: string; handlerId: string; argsExpr: string | null } | null;
+}
+
+function findCompiledOpenTagEnd(src: string, start: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let i = start; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '\\' && src[i + 1] === '$' && src[i + 2] === '{') {
+      const close = findMatching(src, i + 2, '{', '}');
+      if (close < 0) return -1;
+      i = close;
+      continue;
+    }
+    if (ch === '$' && src[i + 1] === '{' && src[i - 1] !== '\\') {
+      const close = findMatching(src, i + 1, '{', '}');
+      if (close < 0) return -1;
+      i = close;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote && src[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '>') return i;
+  }
+  return -1;
+}
 
 /**
  * Compile a single HTML segment, replacing {expr} with escaped output,
@@ -1828,6 +1864,7 @@ function compileHtmlSegment(
   let result = '';
   let pos = 0;
   let pendingActionHiddenInput: string | null = null;
+  let pendingActionTagStart = -1;
 
   while (pos < line.length) {
     const braceIdx = findNextTemplateBrace(line, pos);
@@ -1966,6 +2003,7 @@ function compileHtmlSegment(
           // Inject only the _action hidden field. Origin enforcement is handled
           // server-side (strict same-origin gate on the /route POST endpoint).
           pendingActionHiddenInput = `\\n<input type="hidden" name="_action" value="${actionValue}">`;
+          pendingActionTagStart = result.lastIndexOf('<');
           pos = closeIdx + 1;
           continue;
         } else if (/^on[A-Za-z]+$/i.test(attrName)) {
@@ -2092,9 +2130,11 @@ function compileHtmlSegment(
     pos = closeIdx + 1;
   }
 
-  if (pendingActionHiddenInput && result.includes('>')) {
-    const gtIndex = result.lastIndexOf('>');
-    result = result.slice(0, gtIndex + 1) + pendingActionHiddenInput + result.slice(gtIndex + 1);
+  if (pendingActionHiddenInput && pendingActionTagStart >= 0) {
+    const gtIndex = findCompiledOpenTagEnd(result, pendingActionTagStart);
+    if (gtIndex >= 0) {
+      result = result.slice(0, gtIndex + 1) + pendingActionHiddenInput + result.slice(gtIndex + 1);
+    }
   }
 
   return buildAppendStatement(`\`${result}${options.appendNewline === false ? '' : '\\n'}\``, options.emitCall);
@@ -2169,7 +2209,7 @@ function findClosingBrace(src: string, openPos: number): number {
  */
 /**
  * Generate a standalone `function render(data) { ... return html; }` string
- * suitable for use outside the full route pipeline (e.g. by `@kuratchi/vite`).
+ * suitable for use outside the full route pipeline (e.g. by `koze/vite`).
  *
  * @param template  The template body source (pre-parsed out of the route file).
  * @param dataVars  Optional list of identifier names to destructure from
@@ -2215,4 +2255,4 @@ ${destructure}
 }`;
 }
 
-// TypeScript transpilation removed — wrangler's esbuild handles it
+// TypeScript transpilation is delegated to the build integration.

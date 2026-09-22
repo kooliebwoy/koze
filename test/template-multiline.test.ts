@@ -83,6 +83,16 @@ line two">Hello</div>`;
     expect(result).toContain('line two');
   });
 
+  it('injects _action inside a complete single-line form', () => {
+    const template = `<form action={draftReply} method="POST"><input name="id" value="1842"><button type="submit">Draft</button></form>`;
+    const result = compileTemplate(template, undefined, new Set(['draftReply']));
+    const actionIndex = result.indexOf('name="_action" value="draftReply"');
+    const closeFormIndex = result.indexOf('</form>');
+
+    expect(actionIndex).toBeGreaterThan(-1);
+    expect(actionIndex).toBeLessThan(closeFormIndex);
+  });
+
   it('handles complex nested ternary with multi-line HTML content', () => {
     const template = `{isRunning ? (
 						<svg class="spinner" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

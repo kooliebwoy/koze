@@ -1,5 +1,38 @@
 # koze
 
+## Unreleased
+
+### Breaking Changes
+
+- Applications now own `src/worker.ts`. Import `handleRequest` from
+  `koze:worker`, compose it into the native default Worker export, and export
+  platform classes and non-fetch handlers explicitly.
+- Removed all Cloudflare product filename conventions and automatic Wrangler
+  synchronization. Former `.do.ts`, `.workflow.ts`, `.queue.ts`,
+  `.pipeline.ts`, `.container.ts`, `.sandbox.ts`, and `.agent.ts` files are
+  ordinary server modules with no infrastructure semantics.
+- Removed generated Durable Object facades/proxies, Queue dispatch, Workflow
+  and Pipeline registries, Pipeline/API Shield artifacts, and asset-binding
+  inference.
+- Removed product-specific runtime and virtual-module APIs for Durable
+  Objects, Workflows, Pipelines, Containers, Cloudflare Access, and static
+  assets. Use native Cloudflare bindings and owning packages directly.
+- Removed the compiler `cloudflare` capability group. Compiler operations are
+  deterministic Koze language/project/output operations and perform no
+  platform configuration writes.
+- Removed the `koze({ api: ... })` Vite option. API routes now always use the
+  compiler-owned `src/routes/api/` to `/api` convention; non-standard HTTP
+  routing belongs in the application Worker.
+
+### Added
+
+- Added a Cloudflare Vitest integration suite proving Koze SSR, a native
+  application-exported Durable Object, native DO RPC, and an application-owned
+  Queue and Scheduled handler inside `workerd`.
+- New scaffolds use peer `koze()` and `cloudflare()` plugins, an
+  application-owned Worker entrypoint, explicit Wrangler configuration, and
+  declarative Durable Object class `exports`.
+
 ## 0.0.41
 
 ### Added

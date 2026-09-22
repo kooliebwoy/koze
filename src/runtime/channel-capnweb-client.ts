@@ -1,5 +1,5 @@
 import { newHttpBatchRpcSession, newWebSocketRpcSession } from 'capnweb';
-import { KURATCHI_CHANNEL_ENDPOINT, KURATCHI_CHANNEL_PROBE_OP } from './channel-protocol.js';
+import { KOZE_CHANNEL_ENDPOINT, KOZE_CHANNEL_PROBE_OP } from './channel-protocol.js';
 import type { KuratchiChannelCallFrame } from './channel-protocol.js';
 import type { KuratchiChannelInvokeInput } from './channel.js';
 import type { KuratchiHostInvokeResult } from './channel-host.js';
@@ -130,7 +130,7 @@ function markWebSocketEndpointUnavailable(endpoint: string): void {
 async function probeWebSocketRoot(root: KuratchiCapnWebRoot): Promise<void> {
   const result = await withTimeout(
     root.call({
-      op: KURATCHI_CHANNEL_PROBE_OP,
+      op: KOZE_CHANNEL_PROBE_OP,
       args: [],
       target: 'route',
       kind: 'query',
@@ -258,7 +258,7 @@ function normalizeFrame(input: KuratchiChannelInvokeInput): KuratchiChannelCallF
 export async function invokeKuratchiCapnWebHttp<T = unknown>(
   input: KuratchiChannelInvokeInput,
 ): Promise<T> {
-  const endpoint = input.endpoint || KURATCHI_CHANNEL_ENDPOINT;
+  const endpoint = input.endpoint || KOZE_CHANNEL_ENDPOINT;
   try {
     const result = await getBatchRoot(endpoint).call(normalizeFrame(input));
     if (!result || result.ok !== true) {
@@ -277,7 +277,7 @@ export async function invokeKuratchiCapnWebHttp<T = unknown>(
 export async function invokeKuratchiCapnWebWebSocket<T = unknown>(
   input: KuratchiChannelInvokeInput,
 ): Promise<T> {
-  const endpoint = input.endpoint || KURATCHI_CHANNEL_ENDPOINT;
+  const endpoint = input.endpoint || KOZE_CHANNEL_ENDPOINT;
   try {
     const result = await (await getWebSocketRoot(endpoint, input.idleMs)).call(normalizeFrame(input));
     if (!result || result.ok !== true) {

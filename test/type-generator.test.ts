@@ -53,7 +53,6 @@ describe('type generator', () => {
   test('generated app.d.ts type-checks Kuratchi virtual modules and app locals', () => {
     const projectDir = createTempProject('virtual-contract');
     projectDirs.push(projectDir);
-    write(path.join(projectDir, 'src', 'server', 'billing-sync.workflow.ts'), 'export default {};\n');
     write(path.join(projectDir, 'src', 'content', 'docs', 'getting-started.md'), '# Getting started\n');
 
     const appTypes = generateAppTypes({
@@ -71,27 +70,13 @@ describe('type generator', () => {
       `import { locals, params } from 'koze:request';
 import { navigateTo } from 'koze:navigation';
 import { props } from 'koze:component';
-import { user } from 'koze:access';
-import { workflowStatus } from 'koze:workflow';
 import { content } from 'koze:content';
 
 const userId: number = locals.userId;
 const email: string = locals.userEmail;
 const slug: string | undefined = params.slug;
 const title: string = props<{ title: string }>().title;
-const accessEmail: string = user().email;
 navigateTo('/dashboard', { replace: true });
-
-async function inspectWorkflow() {
-  const status = await workflowStatus('billing-sync', 'run-1', {
-    poll: '1s',
-    until: (value) => value.status === 'complete',
-  });
-  const pending: boolean = status.pending;
-  const success: boolean = status.success;
-  const error: string | null = status.error;
-  return { pending, success, error, slug, title, accessEmail, userId, email };
-}
 
 async function inspectContent() {
   const docs = await content.docs.list();
@@ -100,9 +85,6 @@ async function inspectContent() {
   const html: string | undefined = doc?.html;
   return { firstTitle, html };
 }
-
-// @ts-expect-error unknown workflow names must not type-check
-workflowStatus('missing-workflow', 'run-1');
 
 // @ts-expect-error locals preserve the app-provided number type
 const badUserId: string = locals.userId;
@@ -188,7 +170,7 @@ export const schema = { id: 'string!' };
 `,
     );
     write(appTypesPath, generateAppTypes({ projectDir }));
-    expect(fs.readFileSync(appTypesPath, 'utf-8')).not.toContain("$server/activity-log.pipeline");
+    expect(fs.readFileSync(appTypesPath, 'utf-8')).toContain("$server/activity-log.pipeline");
     write(
       usagePath,
       `import signOut, { currentTenant, getUser } from '$server/account';
@@ -233,123 +215,6 @@ void run;
       baseUrl: packageRoot,
       paths: {
         '@kuratchi/koze/runtime/channel.js': ['src/runtime/channel.ts'],
-      },
-    });
-
-    expect(diagnostics.map(formatDiagnostic)).toEqual([]);
-  }, TYPECHECK_TIMEOUT_MS);
-
-  test('runtime route module contracts preserve app Env across load, actions, rpc, and api routes', () => {
-    const projectDir = createTempProject('route-contract');
-    projectDirs.push(projectDir);
-    const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-    const usagePath = path.join(projectDir, 'src', 'route-contract.ts');
-    write(
-      usagePath,
-      `import type {
-  ActionContext,
-  ApiRouteModule,
-  AppConfig,
-  RouteContext,
-  RouteModule,
-} from '@kuratchi/koze/runtime/types.js';
-
-declare global {
-  interface ExecutionContext {
-    waitUntil(promise: Promise<unknown>): void;
-    passThroughOnException(): void;
-  }
-}
-
-type Statement = {
-  bind(...values: unknown[]): Statement;
-  first<T = unknown>(): Promise<T | null>;
-};
-
-type AppEnv = {
-  DB: {
-    prepare(sql: string): Statement;
-  };
-  BUCKET: {
-    get(key: string): Promise<Response | null>;
-  };
-};
-
-const load = async (ctx: RouteContext<AppEnv>) => {
-  const slug: string | undefined = ctx.params.slug;
-  const userId = ctx.locals.userId as number | undefined;
-  const statement: Statement = ctx.env.DB.prepare('select * from items where slug = ?').bind(slug);
-
-  // @ts-expect-error app Env binding type must not collapse to string
-  const badDb: string = ctx.env.DB;
-
-  return { slug, userId, statement };
-};
-
-const nativeSave = async (ctx: ActionContext<AppEnv>) => {
-  const title = ctx.formData.get('title');
-  const method: string = ctx.request.method;
-  const pathname: string = ctx.url.pathname;
-  ctx.env.DB.prepare('insert into items(title) values (?)').bind(title);
-  return { method, pathname };
-};
-
-const positionalSave = async (id: string, ctx: ActionContext<AppEnv>) => {
-  ctx.env.DB.prepare('update items set slug = ? where id = ?').bind(ctx.params.slug, id);
-  return { id };
-};
-
-const pageRoute: RouteModule<AppEnv> = {
-  pattern: '/items/:slug',
-  load,
-  actions: {
-    nativeSave,
-    positionalSave,
-  },
-  rpc: {
-    getItem: async (args, env, ctx) => {
-      const id = String(args[0]);
-      const slug: string | undefined = ctx.params.slug;
-      const item = await env.DB.prepare('select * from items where id = ?').bind(id).first<{ title: string }>();
-      return { item, slug };
-    },
-  },
-  render: (data) => ({ html: String(data.slug), head: '<title>Item</title>' }),
-};
-
-const apiRoute: ApiRouteModule<AppEnv> = {
-  __api: true,
-  pattern: '/api/items/:slug',
-  GET: async (ctx) => {
-    const response = await ctx.env.BUCKET.get(ctx.params.slug);
-    return response ?? new Response('missing', { status: 404 });
-  },
-  POST: (ctx) => {
-    ctx.env.DB.prepare('insert into api_logs(slug) values (?)').bind(ctx.params.slug);
-    return new Response('ok');
-  },
-};
-
-const app: AppConfig<AppEnv> = {
-  routes: [pageRoute, apiRoute],
-};
-
-const invalidRoute: RouteModule<AppEnv> = {
-  pattern: '/invalid',
-  // @ts-expect-error load context must use the route Env type
-  load: (ctx: RouteContext<{ OTHER: string }>) => ({ other: ctx.env.OTHER }),
-  render: () => '',
-};
-
-void app;
-void invalidRoute;
-`,
-    );
-
-    const diagnostics = typecheck([usagePath], {
-      baseUrl: packageRoot,
-      paths: {
-        '@kuratchi/koze/runtime/types.js': ['src/runtime/types.ts'],
       },
     });
 

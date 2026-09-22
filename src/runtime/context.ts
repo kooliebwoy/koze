@@ -8,7 +8,6 @@
  * variables are safe and require no Node.js compat flags.
  */
 
-import { __getDoSelf } from './do.js';
 import { __setRequestParams, __setRequestState } from './request.js';
 
 let __ctx: any = null;
@@ -45,41 +44,14 @@ export function __setRequestContext(ctx: any, request: Request, env?: Record<str
   };
 }
 
-/**
- * Push a new request context for the duration of a DO RPC call.
- * Saves current state and returns a restore function.
- * @internal
- */
-export function __pushRequestContext(rpcContext: any, ctx: any, env: any): () => void {
-  const prevCtx = __ctx;
-  const prevRequest = __request;
-  const prevEnv = __env;
-  const prevLocals = __locals;
-  __ctx = ctx;
-  __request = rpcContext?.request ?? __request;
-  __env = env ?? __env;
-  __locals = rpcContext?.locals ? { ...rpcContext.locals } : {};
-  return () => {
-    __ctx = prevCtx;
-    __request = prevRequest;
-    __env = prevEnv;
-    __locals = prevLocals;
-  };
-}
-
-
-/** Get the execution context (Worker: ExecutionContext, DO: DurableObjectState) */
+/** Get the current Worker execution context. */
 export function getCtx(): any {
-  const doSelf = __getDoSelf();
-  if (doSelf) return doSelf.ctx;
   if (!__ctx) throw new Error('getCtx() called outside of a request context');
   return __ctx;
 }
 
 /** Get the current environment bindings */
 export function getEnv<T = Record<string, any>>(): T {
-  const doSelf = __getDoSelf();
-  if (doSelf) return doSelf.env as T;
   if (!__env) throw new Error('getEnv() called outside of a request context');
   return __env as T;
 }

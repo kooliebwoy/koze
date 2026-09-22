@@ -1,1 +1,1 @@
-export { defineMiddleware, defineRuntime } from './middleware.js';
+export { defineMiddleware } from './middleware.js';

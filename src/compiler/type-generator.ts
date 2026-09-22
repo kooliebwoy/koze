@@ -3,10 +3,6 @@ import * as path from 'node:path';
 import ts from 'typescript';
 
 import { buildVirtualModuleTypeDeclarations } from './virtual-modules.js';
-import {
-  assertCanonicalConventionFileSuffixes,
-  discoverFilesWithSuffix,
-} from './convention-discovery.js';
 import { discoverContentGroupNames } from './content-discovery.js';
 
 /**
@@ -27,7 +23,6 @@ interface SchemaTable {
 }
 
 const SERVER_RPC_EXTENSIONS = ['.ts', '.js', '.mjs'] as const;
-const SERVER_CONVENTION_FILE_RE = /\.(agent|workflow|queue|pipeline|container|sandbox|do)\.(ts|js|mjs)$/;
 
 function toPosixPath(value: string): string {
   return value.replace(/\\/g, '/');
@@ -56,7 +51,6 @@ function discoverServerRpcFiles(serverDir: string): string[] {
         continue;
       }
       if (!entry.isFile()) continue;
-      if (SERVER_CONVENTION_FILE_RE.test(entry.name)) continue;
       if (extSet.has(path.extname(entry.name) as typeof SERVER_RPC_EXTENSIONS[number])) out.push(abs);
     }
   };
@@ -268,18 +262,6 @@ export function generateAppTypes(options: GenerateTypesOptions): string {
     tables = parseSchemaFromSource(schemaSource);
   }
 
-  assertCanonicalConventionFileSuffixes(projectDir);
-
-  // Discover workflow names for koze:workflow type union
-  const workflowDir = path.join(projectDir, 'src', 'server');
-  const workflowFiles = discoverFilesWithSuffix(workflowDir, '.workflow.ts');
-  const workflowNames = workflowFiles
-    .map((f) => path.basename(f, '.workflow.ts'))
-    .filter((n) => /^[A-Za-z_$][\w$-]*$/.test(n));
-  const pipelineFiles = discoverFilesWithSuffix(workflowDir, '.pipeline.ts');
-  const pipelineNames = pipelineFiles
-    .map((f) => path.basename(f, '.pipeline.ts'))
-    .filter((n) => /^[A-Za-z_$][\w$-]*$/.test(n));
   const contentNames = discoverContentGroupNames(projectDir);
   
   const tableTypes = tables.length > 0 ? generateTableTypes(tables) : '';
@@ -311,7 +293,7 @@ export function generateAppTypes(options: GenerateTypesOptions): string {
  * \`ctx.locals\` from \`src/middleware.ts\` belong here.
  */
 
-${buildVirtualModuleTypeDeclarations(workflowNames, pipelineNames, contentNames)}
+${buildVirtualModuleTypeDeclarations(contentNames)}
 ${serverRpcTypes ? `\n\n${serverRpcTypes}` : ''}
 
 declare namespace App {

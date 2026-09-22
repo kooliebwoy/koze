@@ -761,15 +761,11 @@ export function buildSelectiveSsrPrelude(opts: {
     .filter((record) => record.included && record.source.length > 0)
     .map((record) => record.source)
     .join('\n');
-  // Strip TypeScript type annotations from the prelude. Two
-  // consumers downstream:
-  //   - Legacy CLI: emits to .koze/routes.ts which wrangler's
-  //     esbuild transpiles. Stripping here is redundant but safe
-  //     (esbuild is idempotent over JS).
-  //   - Vite plugin: emits the prelude inside a virtual module that
+  // Strip TypeScript type annotations from the prelude. The Vite
+  // plugin emits the prelude inside a virtual module that
   //     Rollup ingests. Rollup does NOT transpile TS, so type
   //     annotations like `let x: string | null = null` cause a
-  //     parse error. Transpiling here makes the output Rollup-clean.
+  // parse error. Transpiling here makes the output Rollup-clean.
   const prelude = preludeWithTypes
     ? ts.transpileModule(preludeWithTypes, {
         compilerOptions: {
