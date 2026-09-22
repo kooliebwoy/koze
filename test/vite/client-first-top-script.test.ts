@@ -285,6 +285,39 @@ $: label = dev ? 'dev' : 'prod';
 		expect(fragment).toContain("__k$.effect(() => { __kState.label = dev ? 'dev' : 'prod'; });");
 	});
 
+	test('compiles imported components used in app.koze shell', async () => {
+		const projectDir = createTempProject('app-shell-components');
+		projectDirs.push(projectDir);
+		const compPath = path.join(projectDir, 'src', 'lib', 'badge.koze');
+		fs.mkdirSync(path.dirname(compPath), { recursive: true });
+		fs.writeFileSync(compPath, '<span class="badge"><slot /></span>', 'utf-8');
+		fs.writeFileSync(
+			path.join(projectDir, 'src', 'app.koze'),
+			`<script>
+import Badge from '$lib/badge.koze';
+</script>
+<!DOCTYPE html>
+<html>
+<head><title>App</title></head>
+<body>
+	<Badge>Alpha</Badge>
+	<slot></slot>
+</body>
+</html>`,
+			'utf-8',
+		);
+		fs.writeFileSync(
+			path.join(projectDir, 'src', 'routes', 'page.koze'),
+			'<h1>Page</h1>',
+			'utf-8',
+		);
+
+		const plugin = await setupPlugin(projectDir, 'build');
+		const appModule = (await plugin.load('\0koze:app')) as string;
+		expect(appModule).toContain('__c_');
+		expect(appModule).not.toContain('<Badge>');
+	});
+
 	test('rewrites leading route script for client hydration and reactive runtime usage', async () => {
 		const projectDir = createTempProject('leading-client-fragment');
 		projectDirs.push(projectDir);

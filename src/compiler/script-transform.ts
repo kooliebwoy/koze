@@ -676,6 +676,21 @@ function collectAssignedIdentifiers(node: ts.Node, out: Set<string>): void {
   node.forEachChild((child) => collectAssignedIdentifiers(child, out));
 }
 
+function isImperativeTopLevelStatement(statement: ts.Statement): boolean {
+  return ts.isExpressionStatement(statement)
+    || ts.isIfStatement(statement)
+    || ts.isSwitchStatement(statement)
+    || ts.isForStatement(statement)
+    || ts.isForInStatement(statement)
+    || ts.isForOfStatement(statement)
+    || ts.isWhileStatement(statement)
+    || ts.isDoStatement(statement)
+    || ts.isTryStatement(statement)
+    || ts.isThrowStatement(statement)
+    || ts.isLabeledStatement(statement)
+    || ts.isWithStatement(statement);
+}
+
 export function buildSelectiveSsrPrelude(opts: {
   scriptBody: string;
   template: string;
@@ -698,9 +713,6 @@ export function buildSelectiveSsrPrelude(opts: {
   const neededBindings = new Set<string>(collectServerTemplateReferences(opts.template));
   for (const name of opts.additionalNeededBindings ?? []) {
     if (name) neededBindings.add(name);
-  }
-  if (neededBindings.size === 0) {
-    return { prelude: '', imports: [], neededBindings: [] };
   }
   if (!scriptBody.trim()) {
     return {
@@ -736,9 +748,14 @@ export function buildSelectiveSsrPrelude(opts: {
       provided,
       referenced: source ? collectReferencedIdentifiers(source) : new Set<string>(),
       source,
-      included: false,
+      included: isImperativeTopLevelStatement(statement),
     };
   });
+
+  for (const record of records) {
+    if (!record.included) continue;
+    for (const ref of record.referenced) neededBindings.add(ref);
+  }
 
   let changed = true;
   while (changed) {

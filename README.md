@@ -103,6 +103,20 @@ Koze supports native JavaScript-shaped `if`, `else`, and `for` control flow, `{e
 
 A second route script or a document shell inside `layout.koze` is a compiler error. Put the document frame in `src/app.koze`, shared page structure in `layout.koze`, and longer browser helpers in `src/lib/`.
 
+The optional `src/app.koze` shell can import and render `.koze` components just like a route. Its top-level control flow runs during server rendering, so guards and redirects in the shell execute before page markup is returned. Imported components and their styles are included in the shell output; changes to those component files are watched in development. For example:
+
+```html
+<script>
+  import Brand from '$lib/brand.koze';
+</script>
+<!DOCTYPE html>
+<html>
+  <body><Brand /><slot></slot></body>
+</html>
+```
+
+Keep browser-only APIs inside browser-invoked helpers; calling them from shell control flow during server rendering will fail.
+
 ## API routes
 
 API routes follow one fixed convention: TypeScript or JavaScript files below `src/routes/api/` are mounted below `/api`. There is no Vite option for changing the source root or URL prefix.

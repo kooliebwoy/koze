@@ -20,4 +20,25 @@ describe('compiler service boundary', () => {
     expect('cloudflare' in compiler).toBe(false);
     expect('compile' in compilerExports).toBe(false);
   });
+
+  test('preserves top-level server control flow and its dependencies in the SSR prelude', () => {
+    const compiler = createKozeCompiler();
+    const result = compiler.language.buildSelectiveSsrPrelude({
+      scriptBody: `
+        import { pathname } from 'koze:request';
+        import { redirect } from 'koze:navigation';
+        const destination = pathname === '/' ? '/inbox' : '/work';
+        if (pathname === '/') redirect(destination, 308);
+      `,
+      template: '<p>Opening…</p>',
+      serverImports: [
+        "import { redirect } from 'koze:navigation';",
+      ],
+    });
+
+    expect(result.prelude).toContain("const destination = pathname === '/' ? '/inbox' : '/work';");
+    expect(result.prelude).toContain("if (pathname === '/')");
+    expect(result.prelude).toContain('redirect(destination, 308);');
+    expect(result.imports).toEqual(["import { redirect } from 'koze:navigation';"]);
+  });
 });

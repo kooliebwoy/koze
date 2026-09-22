@@ -1599,9 +1599,10 @@ export function transformAppFile(
 	clientFragments?: Map<string, ClientFragment>,
 	isProduction: boolean = false,
 	importerAbsPath?: string,
-): string {
+	componentCompiler?: ComponentCompiler,
+): { code: string; watchFiles: string[] } {
 	const preprocessed = clientFragments && importerAbsPath
-		? extractClientFragments(source, importerAbsPath, clientFragments, isProduction)
+		? extractClientFragments(source, importerAbsPath, clientFragments, isProduction, componentCompiler)
 		: { source, leadingHash: null as string | null };
 	const parsed = parseFile(preprocessed.source, {
 		kind: 'route',
@@ -1622,20 +1623,31 @@ export function transformAppFile(
 		.replace(/<slot\s*><\/slot>/g, '{@raw __content}')
 		.replace(/<slot\s*\/>/g, '{@raw __content}');
 	const script = parsed.script ?? '';
+
+	const componentNames = componentCompiler && importerAbsPath
+		? componentCompiler.collectComponentMap(parsed.componentImports, importerAbsPath)
+		: undefined;
+	const componentWatchFiles = componentCompiler
+		? (Array.from(componentCompiler.getResolvedFiles().values()) as string[])
+		: [];
+
 	const appPreludePlan = buildSelectiveSsrPrelude({
 		scriptBody: script,
 		template,
 		serverImports: parsed.serverImports ?? [],
 	});
 	const authoredImports = appPreludePlan.imports.join('\n');
+	const componentModuleImports = componentCompiler
+		? componentCompiler.getServerImports().join('\n')
+		: '';
 	const manifestImport = hasGlobalCss
 		? "import { resolveGlobalCssHref as __kozeResolveGlobalCssHref } from 'koze:manifest';"
 		: '';
 	const leadingHash = preprocessed.leadingHash;
-	const moduleImports = [authoredImports, manifestImport].filter(Boolean).join('\n');
+	const moduleImports = mergeImportDeclarations([authoredImports, componentModuleImports, manifestImport].filter(Boolean).join('\n'));
 	const prelude = appPreludePlan.prelude;
 	const requestImportDecls = buildRequestImportDecls(parsed.requestImports ?? []);
-	let body = compileTemplate(template, undefined, undefined, undefined, {
+	let body = compileTemplate(template, componentNames, undefined, undefined, {
 		reactiveOwnerId: leadingHash ?? undefined,
 	});
 	if (leadingHash) {
@@ -1657,8 +1669,18 @@ export function transformAppFile(
 	const appManifestImport = leadingHash
 		? `import { resolveClientAsset } from 'koze:manifest';\n`
 		: '';
+	const componentDecls = componentCompiler
+		? componentCompiler.getCompiledComponents().join('\n\n')
+		: '';
+	const componentStyles = componentCompiler && componentNames
+		? componentCompiler.collectStyles(componentNames)
+		: [];
+	const componentStylesInjection = componentStyles.length > 0
+		? `__parts.push(\`${componentStyles.join('')}\`);`
+		: '';
 
 	const code = `${appManifestImport}${moduleImports}
+${componentDecls}
 export const hasApp = true;
 export async function render(data, __content) {
 ${requestImportDecls}
@@ -1687,11 +1709,11 @@ ${requestImportDecls}
 
 	${prelude}
 
-	${body}
+	${injectComponentStyles(body, componentStylesInjection)}
 	return __html;
 }
 `;
-	return importerAbsPath
+	const finalCode = importerAbsPath
 		? appendInlineSourceMap(
 			code,
 			createKuratchiSourceMap({
@@ -1702,6 +1724,10 @@ ${requestImportDecls}
 			}),
 		)
 		: code;
+
+	const output = { code: finalCode, watchFiles: componentWatchFiles };
+	(output as any).toString = () => finalCode;
+	return output;
 }
 
 /**

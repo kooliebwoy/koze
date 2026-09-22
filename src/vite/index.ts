@@ -902,10 +902,25 @@ function routesPlugin(options: ResolvedKozeOptions): Plugin {
 				if (rootAppPath) {
 					this.addWatchFile(rootAppPath);
 					const source = await fs.promises.readFile(rootAppPath, 'utf-8');
-					return transformAppFile(source, checkHasGlobalCss(), clientFragments, isProduction, rootAppPath);
+					const result = transformAppFile(
+						source,
+						checkHasGlobalCss(),
+						clientFragments,
+						isProduction,
+						rootAppPath,
+						componentCompiler!,
+					);
+					const code = typeof result === 'string' ? result : result.code;
+					const watchFiles = typeof result === 'string' ? [] : result.watchFiles;
+					for (const file of watchFiles) {
+						this.addWatchFile(file);
+						registerComponentImporter(componentImporters, file, rootAppPath);
+					}
+					return code;
 				}
 				// Default shell — no app.koze in the project.
-				return transformAppFile(DEFAULT_APP_SHELL, checkHasGlobalCss());
+				const result = transformAppFile(DEFAULT_APP_SHELL, checkHasGlobalCss());
+				return typeof result === 'string' ? result : result.code;
 			}
 			// Global-CSS virtual shim: imports the framework baseline
 			// (view-transitions etc.) *then* the user's `src/app.css` so
