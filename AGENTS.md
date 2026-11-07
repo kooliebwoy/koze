@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Purpose
-This document defines how coding agents should operate in `packages/koze`.
+This document defines how coding agents should operate in `@kuratchi/koze`.
 
 ## Agent Role
 The agent is an expert Cloudflare Workers framework architect. This means:
@@ -9,27 +9,25 @@ The agent is an expert Cloudflare Workers framework architect. This means:
 - You abstract Cloudflare platform complexity away from the developer. If something is hard, the framework handles it.
 - You build features **completely, correctly, and performantly** — regardless of task size. No partial implementations. No deferred complexity. No TODOs left in shipped code.
 - You default to doing the work, not explaining why it's hard.
-- You think in systems: compiler, runtime, Vite integration, scaffolder, and packages must remain coherent after every change.
+- You think in systems: compiler, runtime, and Vite integration must remain coherent after every change.
 
 ## Product Mission
-Our ultimate goal is to deliver the best developer experience (DX) for Cloudflare Workers with an all-batteries-included framework, while reducing the mental model required to get started and ship production apps.
+Our ultimate goal is to deliver the best developer experience (DX) for Cloudflare Workers with an HTML-first full-stack framework, while reducing the mental model required to get started and ship production apps.
 
-## What "Batteries Included" Means
-Koze ships everything a developer needs to build a production Cloudflare app:
+## What Koze Owns
+Koze ships the application language and HTTP lifecycle for a production Cloudflare Worker:
 - Routing, rendering, and compiler — no configuration required to start.
-- Auth (credentials, OAuth, guards, rate limiting, roles, turnstile, activity) — callable and config-driven.
-- ORM targeting D1 and Durable Object SQLite — no raw SQL bootstrapping.
+- Request-time middleware (`src/middleware.ts`), cookies, navigation, streaming, and security headers.
 - Forms with native POST-Redirect-GET and progressive enhancement.
-- Dev tooling, benchmarking, and type alignment with Wrangler bindings.
-
-Developers should not have to wire any of this together manually. The framework does it.
+- Browser-to-Worker `$server/*` RPC over Cap'n Web.
+- Type alignment with Wrangler bindings (`wrangler types`).
 
 ## Package Scope: Apps and Libraries
 Koze supports two categories of output, both built with the same framework:
 
-**Fullstack Cloudflare Workers apps** — server-rendered pages, Durable Objects, D1, auth, forms, routing. Example: `apps/web`, `apps/site`.
+**Fullstack Cloudflare Workers apps** — server-rendered pages, native Cloudflare bindings (Durable Objects, D1, Queues, Workflows), forms, routing.
 
-**Library/package targets** — framework-built packages that ship reusable UI components or behavior for other Koze apps. Example: `packages/kuratchi-db-studio` (`@kuratchi/db-studio`) — a shared SQL browser component for D1 and Durable Object SQLite databases, built with the framework's HTML-first component model and distributed as `.koze` source files.
+**Library/package targets** — framework-built packages that ship reusable UI components or behavior for other Koze apps, built with the framework's HTML-first component model and distributed as `.koze` source files.
 
 This means we **dog food everything**: Koze packages are built with Koze conventions. If a pattern isn't ergonomic enough to use in our own packages, it is not good enough to ship to developers.
 
@@ -37,13 +35,11 @@ This means we **dog food everything**: Koze packages are built with Koze convent
 - Koze is Cloudflare Workers-native and Vite-default.
 - Koze uses Svelte-inspired syntax and native HTML-first patterns.
 - Route and component files use the `.koze` extension (HTML-shaped with native JS control flow, `{expression}` interpolation, `<slot>` composition, `$server/*` RPC imports).
-- This package owns the framework end-to-end: compiler, runtime, scaffolder, and Vite plugin.
+- This package owns the framework end-to-end: compiler, runtime, and Vite plugin. It has no built-in CLI or project scaffolder.
 - The framework is convention-driven only for its own language: routes auto-discover from `src/routes/`; ordinary modules live in `src/server/`; request-time concerns live in `src/middleware.ts`; and the application owns `src/worker.ts`.
 - Cloudflare products have no Koze filename conventions. Durable Objects, Workflows, Queues, Pipelines, Containers, Sandbox, Agents, and other primitives use native classes, handlers, bindings, and explicit Worker exports.
-- Auth is callable and config-driven (credentials, guards, rate limiting, OAuth, activity, roles, turnstile).
-- Data layer targets Cloudflare D1 and Durable Object SQLite via `@kuratchi/orm`.
 - Forms/actions favor native POST-Redirect-GET behavior and progressive enhancement.
-- Types should align with Wrangler-generated bindings (`wrangler types`).
+- Types align with Wrangler-generated bindings (`wrangler types`).
 
 ## Internal Layout
 The package contains four source layers, each with a clear scope:
@@ -64,20 +60,14 @@ The package contains four source layers, each with a clear scope:
 - Prioritize DX over cleverness: prefer clear APIs, predictable behavior, and low setup friction.
 - Keep Cloudflare-first defaults: D1, Durable Objects, Workers runtime, and Wrangler-aligned typing.
 - Minimize cognitive load: reduce boilerplate, centralize configuration, and provide sensible defaults.
-- Preserve consistency across compiler, runtime, Vite, and scaffolding so features feel unified.
+- Preserve consistency across compiler, runtime, and Vite integration so features feel unified.
 - Favor safe incremental changes with strong TypeScript signals and practical docs/examples.
-
-## Source of Truth
-- Primary framework package: `packages/koze`.
-- Primary validation app: `apps/web`.
-- Primary library dog food example: `packages/kuratchi-db-studio` (`@kuratchi/db-studio`).
-- Do not assume legacy/sample apps exist unless they are present in this repository.
 
 ## Required Verification Workflow
 For changes in this package, run all of the following:
-1. `bun run build` in `packages/koze` — also copies `src/vite/runtime/*.js` into `dist/vite/runtime/`.
-2. `bun run check` in `packages/koze` — type-checks compiler, runtime, and Vite plugin together.
-3. `bun run test` in `packages/koze` — exercises compiler unit tests AND the Vite plugin tests under `test/vite/`. The pre-existing failure set (documented in `TESTING.md`) is allowed; growing it is a regression.
+1. `bun run build` — also copies `src/vite/runtime/*.js` into `dist/vite/runtime/`.
+2. `bun run check` — type-checks compiler, runtime, and Vite plugin together.
+3. `bun run test` — exercises compiler unit tests, Vite plugin tests under `test/vite/`, and the native Worker integration suite in `workerd`.
 If any command fails, treat the task as incomplete.
 
 ## Vite plugin discipline
@@ -95,14 +85,13 @@ When working under `src/vite/`:
 - Test runner is **Vitest** (Node pool). Do **not** import from `bun:test` — there is no compatibility shim and the test will fail to load.
 - Test commands: `bun run test` (one-shot, CI default), `bun run test:watch` (watch mode).
 - For async assertions, always use `await expect(promise).rejects.toThrow(...)` / `.resolves.toEqual(...)`. Vitest does not unwrap promises passed to `.toThrow()`.
-- Detailed conventions, layout, fixture patterns, and the current list of pre-existing failing tests live in [`TESTING.md`](./TESTING.md). Update it in the same change as any test-infra modification.
+- Detailed conventions, layout, and fixture patterns live in [`TESTING.md`](./TESTING.md). Update it in the same change as any test-infra modification.
 - Vite plugin unit tests live under `test/vite/` and run in the Node pool. Native Worker integration lives under `test/vite/integration/native-worker/` and runs through `vitest.workerd.config.ts` with `@cloudflare/vitest-plugin`.
 - Extend the workerd fixture for Worker-runtime regressions. Do not restore a generated-worker harness or replace real Worker exports with framework synthesis.
 
 ## Performance Guardrails
 - Keep dev/prod compiler behavior functionally equivalent (dev readability is allowed).
 - Keep injected client bridge consolidated to a single script.
-- This checkout does not currently provide a dedicated framework benchmark script or benchmark artifact path; do not claim benchmark verification unless one is added to the repository.
 - Avoid shipping changes that significantly increase bridge size or p95 compile time without explicit justification.
 
 ## Documentation Contract
@@ -121,8 +110,7 @@ When working under `src/vite/`:
 
 ## Non-Goals
 - Do not optimize for generic multi-runtime abstractions at the cost of Cloudflare-first DX.
-- Do not require developers to hand-wire middleware-heavy auth/ORM bootstrapping for common use cases.
-- Do not introduce patterns that increase cognitive overhead when a simpler config-driven or convention-based option exists.
+- Do not introduce patterns that increase cognitive overhead when a simpler convention-based option exists.
 - Do not prioritize framework-internal cleverness over predictable behavior, debuggability, and clear escape hatches.
 - Do not break native HTML-first workflows by forcing unnecessary client-side JavaScript for core form and page interactions.
 - Do not patch symptoms. Fix root causes at the framework level.
@@ -138,20 +126,17 @@ These decisions shape the framework's structure. Read them before changing anyth
 | 2026-04-25 | Components also use the `.koze` extension (not `.html`). | Single canonical extension across the codebase. Removes the "is this a route or a component?" file-type ambiguity. Aligns with Svelte (`.svelte`) / Vue (`.vue`) / Astro (`.astro`) — none separate route vs. component by extension. The component file kind is determined by import context, not filename. |
 | 2026-04-25 | Components can live anywhere except `src/routes/`. | Co-location works (`src/lib/widgets/chart.koze`), packages work, `$lib/` works. Only `routes/` is forbidden — that's the one footgun strong enough to enforce, prevents accidentally double-rendering a route through `<MyRoute />`. |
 | 2026-04-25 | Explicit `import { props } from 'koze:component'` replaces the ambient `props` reference in components. | The pre-import "ghost props" pattern violated explicit > implicit, was untyped without a code generator, and confused new authors. The new pattern is callable + indexable (`props<T>()` AND `props.x`), TypeScript-typed via the generic, and follows the same `koze:*` virtual-module convention as `koze:request` / `koze:navigation`. Slot semantics keep the platform-native `<slot></slot>` element — no `{@render children()}` ceremony. |
-| 2026-04-25 | Folded `@kuratchi/vite` into `koze` (now lives at `src/vite/`). | The split was paying ongoing cognitive tax for an option we were never going to exercise. There's only one consumer (Cloudflare Workers + Vite); a hypothetical second bundler integration is YAGNI; agents constantly had to re-decide "compiler primitive vs. plugin orchestration?" boundary on every change. The merge eliminates: two AGENTS.md files, two package versions, workspace dep plumbing (we hit the stale-registry-pin bug mid-PR), two READMEs documenting overlapping concerns, two verification gates. Worker bundles still tree-shake correctly because `koze/vite` is a separate package subpath — importing from `@kuratchi/koze/runtime/*` doesn't pull in plugin code. |
-| 2026-04-25 | Slimmed `create-kuratchi` to a thin shim; scaffolding logic lives at `koze/create`. | `npm create <x>` is hard-wired to a registry package literally named `create-<x>` — that constraint is not negotiable. Everything else IS: the actual scaffolding code is framework-shaped logic that belongs alongside the framework. The shim is ~5 lines (parse argv, delegate); changes to scaffolding now happen in one place. |
-| 2026-04-25 | Deleted `kuratchi.config.ts`. The framework is now convention-driven (auto-discovered routes, DOs, containers, workflows) plus middleware-composed (`src/middleware.ts` for auth, ORM auto-migration, custom steps). The Vite plugin owns build-time options (security headers, etc.) via `koze({ security: {...} })`. | The config file had drifted into a passthrough. The framework no longer imports from `@kuratchi/orm` or `@kuratchi/auth`; `koze:migrations` was replaced by explicit `autoMigrate({ DB: schema })` middleware; config-only compatibility types were removed. |
-| 2026-04-25 | Renamed `initDO` -> `autoMigrate` (overloaded). DO form: `autoMigrate(ctx.storage, schema)` runs DDL synchronously inside the constructor. D1 form: `autoMigrate({ DB: schema })` returns a middleware step that runs migrations once per worker isolate. | `initDO` conflated three ideas (init, migrate, return-an-ORM). Splitting `autoMigrate` (DDL only) from `kuratchiORM` (query client) makes each concern auditable. Same verb on both surfaces is the symmetry — D1 and DO get the same mental model, and there's no `koze:migrations` magic to wonder about. |
-| 2026-04-25 | apps/web rebuilt to use `@kuratchi/auth` end-to-end with DO-per-org architecture. Per-org DO lives at `apps/web/src/server/auth.do.ts` (binding `ORG_DB`, class `OrgAuth`); admin D1 holds only the email-org index. | This is the canonical "real app" shape: framework's DO auto-discovery + `@kuratchi/auth`'s DO contract + `@kuratchi/orm`'s `autoMigrate` all composing through `src/middleware.ts`. The dogfood test surfaced real DX bugs in `@kuratchi/auth` (schema naming inconsistencies, missing email-verification flow, missing DO RPC methods for verify/invite) — those are fixed now. Future agents reading apps/web see the canonical pattern. The framework's role here was deliberately limited to: discover `*.do.ts` files -> auto-sync wrangler bindings + SQLite migration entries -> don't otherwise know auth/ORM exist. |
-| 2026-05-08 | Server convention suffixes are singular-only: `.agent.ts`, `.workflow.ts`, `.queue.ts`, `.container.ts`, `.sandbox.ts`, `.do.ts`. | One file maps to one Cloudflare unit. The `<name>.<kind>.ts` rule is easier to teach, avoids plural/singular drift, and lets the compiler reject stale suffixes with direct rename guidance instead of silently missing files. |
+| 2026-04-25 | Folded the Vite plugin into `koze` (now lives at `src/vite/`). | There is only one bundler integration (Cloudflare Workers + Vite). Keeping the plugin in the same package eliminates split-version drift while keeping `koze/vite` a separate subpath so Worker bundles tree-shake cleanly. |
+| 2026-04-25 | Deleted project-level config file. Request-time composition lives in `src/middleware.ts`, and build-time options live on `koze({ security: {...} })`. | The framework is decoupled from external ORM or auth packages; middleware steps compose explicitly in `src/middleware.ts`. |
 | 2026-05-12 | Route files use one top-level `<script>` block. Additional route scripts are errors. | The top script is client-first with explicit server escape hatches and SSR hydration. Allowing extra body scripts created a second compiler path and made route ownership ambiguous. Long client code belongs in `$lib/*`; DOM-only work runs inside browser-called functions. |
-| 2026-05-12 | Browser `$server/*` calls go through the Kuratchi Capn Web channel and return thenable `AsyncValue`s. | The channel is now the transport source of truth for browser RPC state. It preserves `.pending` / `.success` / `.error`, dispatches `koze:invalidate-reads`, and keeps future HTTP/WebSocket optimization behind one framework-owned surface. |
-| 2026-05-12 | Async boundaries use plain `AsyncValue` branches instead of Svelte `{#await}` syntax. | Kuratchi templates already support native `if`/`else` control flow. Treating `.pending` as the compiler signal keeps RPC/loading state composable with normal JavaScript and avoids importing Svelte-only block syntax into the framework API. |
+| 2026-05-12 | Browser `$server/*` calls go through the Cap'n Web channel and return thenable `AsyncValue`s. | The channel is now the transport source of truth for browser RPC state. It preserves `.pending` / `.success` / `.error`, dispatches `koze:invalidate-reads`, and keeps future HTTP/WebSocket optimization behind one framework-owned surface. |
+| 2026-05-12 | Async boundaries use plain `AsyncValue` branches instead of Svelte `{#await}` syntax. | Koze templates already support native `if`/`else` control flow. Treating `.pending` as the compiler signal keeps RPC/loading state composable with normal JavaScript and avoids importing Svelte-only block syntax into the framework API. |
 | 2026-05-12 | Form actions use one context-object calling convention everywhere: `fn(...args, ctx)`, where `ctx` includes `{ formData, request, url, params, env, ctx, locals }`. | Native forms, enhanced forms, and button-triggered actions share the same server signature; forms pass no positionals, button actions pass call-site args before the context object. |
-| 2026-07-27 | Vite is the only application build path. Removed the whole-project `compile()` emitter, generated-worker/createApp runtimes, `.kuratchi` inputs, and deprecated compatibility aliases. Build integrations consume `createKozeCompiler()`. | The second compiler duplicated route discovery, Worker emission, and runtime behavior, obscuring which path defined the product. Koze keeps its compiler because the compiler defines the `.koze` language; Cloudflare automation is an explicit capability that can be extracted later without removing the language engine. |
 | 2026-05-12 | `navigateTo()` and `refreshRoute()` are the client-history navigation APIs. | Same-origin navigation fetches HTML, updates `history`, swaps the document, emits `koze:navigation`, and falls back to native navigation if the response is not an HTML page. `refreshRoute()` reuses the same pipeline for current-route invalidation. Link interception remains intentionally separate; these are explicit helpers for browser event handlers. |
+| 2026-07-27 | Vite is the only application build path. Removed the whole-project `compile()` emitter, generated-worker/createApp runtimes, `.kuratchi` inputs, and deprecated compatibility aliases. Build integrations consume `createKozeCompiler()`. | The second compiler duplicated route discovery, Worker emission, and runtime behavior, obscuring which path defined the product. Koze keeps its compiler because the compiler defines the `.koze` language. |
 | 2026-08-24 | Removed all Cloudflare product conventions, Wrangler mutation, platform artifact generation, generated DO facades/proxies, and product-specific runtime APIs. `koze:worker` now exports only `handleRequest`; applications own `src/worker.ts` and compose it with the peer `@cloudflare/vite-plugin`. | Koze's defensible center is the HTML-first application language and HTTP lifecycle. Cloudflare's official Vite plugin and native Worker APIs now provide first-request-to-production runtime parity. Mirroring fast-moving product schemas created framework bugs and hid identity, security, storage, and deployment decisions that must remain intentional. |
 | 2026-08-25 | API routes use the fixed `src/routes/api/` source root and `/api` URL prefix. Removed the `koze({ api: ... })` option. | `routes` communicates URL addressability, while `public`, `client`, and `server` describe different concerns. Configuring the canonical convention only restated auto-discovery; unusual HTTP routing is clearer when composed explicitly in `src/worker.ts`. |
+| 2026-11-07 | Removed the built-in CLI (`src/cli.ts`), scaffolder (`src/create/`), and migration audit (`src/migration-audit.ts`). | Vite and Wrangler own the development, build, preview, types, and deploy CLI lifecycle. Removing the built-in scaffolder decouples `@kuratchi/koze` from external UI/ORM/auth packages and leaves project templates to a separate package if needed later. |
 
 ## Open follow-ups
 
@@ -159,10 +144,3 @@ These are tracked in this file, not in a separate spike doc, so they stay visibl
 
 - **Broaden Workers-runtime tests.** The native Worker fixture now covers SSR, native DO RPC, and a Queue handler through `@cloudflare/vitest-plugin`. Extend it for browser RPC transport, streaming, and production-build regressions as concrete cases arise.
 - **`wrangler deploy` against a real Cloudflare account.** A real deploy of the Vite-built bundle has not been smoke-tested in this package checkout.
-- **`@kuratchi/auth` activity DO methods.** Koze does not generate or inject DO methods. If `@kuratchi/auth` wants org-DB activity, expose an explicit helper or mixin from its own Cloudflare integration so the application opts in inside its native DO class.
-
-
-
-
-
-

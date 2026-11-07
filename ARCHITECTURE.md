@@ -47,7 +47,6 @@ The API route root and URL prefix are deliberately not Vite options. `src/routes
 | `src/compiler/` | Deterministic Koze language parsing, analysis, transforms, diagnostics, source maps, and type generation |
 | `src/runtime/` | Request-time framework helpers for HTTP, rendering, RPC, actions, middleware, cookies, security, and streaming |
 | `src/vite/` | Thin Vite orchestration: virtual modules, graph wiring, cache invalidation, HMR, and the Koze HTTP handler |
-| `src/create/` | One-time application scaffold with explicit Worker and Cloudflare configuration |
 
 Compiler logic must live under `src/compiler/`. Vite hooks consume compiler APIs and retain only graph/build-environment state.
 
@@ -67,7 +66,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 ```
 
-Koze does not generate this module, add named exports, synthesize non-fetch handlers, or mutate it during dev. The scaffolder creates it once and the application owns it thereafter.
+Koze does not generate this module, add named exports, synthesize non-fetch handlers, or mutate it during dev. The application owns this module directly.
 
 ## Server modules
 

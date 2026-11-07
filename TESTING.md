@@ -13,10 +13,10 @@ bun run test
 ```
 
 - `build` emits the package and copies `src/vite/runtime/*.js`.
-- `check` type-checks compiler, runtime, scaffolder, and Vite integration together.
+- `check` type-checks compiler, runtime, and Vite integration together.
 - `test` runs the Node suite and then the native Worker integration suite in `workerd`.
 
-There is no legacy CLI build gate. `koze create` is a scaffolder, and Vite is the only application build path.
+There is no CLI build gate; Vite is the only application build path.
 
 ## Test ownership
 

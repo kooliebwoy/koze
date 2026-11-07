@@ -31,15 +31,16 @@ export default {
 
 `koze()` and `cloudflare()` are peer plugins. Koze does not call or wrap the Cloudflare plugin, parse or write Wrangler configuration, provision resources, or synthesize Worker exports.
 
-## Create an application
+## Getting started
+
+Install `@kuratchi/koze` alongside Vite, the official Cloudflare Vite plugin, and Wrangler:
 
 ```bash
-npm create kuratchi@latest my-app
-cd my-app
-npm run dev
+npm install @kuratchi/koze
+npm install -D vite @cloudflare/vite-plugin wrangler @cloudflare/workers-types
 ```
 
-The generated application includes:
+A Koze application uses this structure:
 
 ```text
 src/
@@ -55,15 +56,14 @@ vite.config.ts
 wrangler.jsonc        application-owned Cloudflare configuration
 ```
 
-Useful commands:
+Standard Vite and Wrangler commands drive the workflow:
 
 ```bash
-npm run dev
-npm run build
-npm run preview
-npm run test
-npm run types
-npm run deploy
+vite dev
+vite build
+vite preview
+wrangler types
+wrangler deploy
 ```
 
 Development and preview run through Cloudflare's official Vite integration in `workerd`, not a Koze emulator.
@@ -389,7 +389,7 @@ There are no `koze:workflow`, `koze:pipeline`, `koze:access`, or `koze:assets` p
 
 ## Static assets
 
-Configure assets explicitly through Cloudflare. The scaffold uses:
+Configure assets explicitly through Cloudflare in `wrangler.jsonc`:
 
 ```jsonc
 {
@@ -416,14 +416,6 @@ Use normal public URLs in markup or call the native asset binding when an applic
 | API Shield generation | Application-owned OpenAPI and security provisioning |
 
 This is intentionally a breaking boundary. There is no hidden compatibility mode because retaining one would preserve a second Worker construction path.
-
-Run the read-only migration audit in an existing application:
-
-```bash
-npx koze audit-native-worker .
-```
-
-Add `--json` for machine-readable findings. The audit reports former convention files, direct `.do` browser imports, removed wrapper APIs, synthetic Worker re-exports, and generated `_cloudflare/` artifacts. It never rewrites infrastructure or guesses identity, authorization, retry, or lifecycle decisions.
 
 ## Packages
 
