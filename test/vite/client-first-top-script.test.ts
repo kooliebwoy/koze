@@ -94,6 +94,8 @@ describe('koze/vite client-first leading script emit', () => {
 		const appModule = await plugin.load('\0koze:app');
 
 		expect(appModule).toContain('__kozeReactive = { __version: runtimeVersion, state, effect, replace, scope, mount, renderer };');
+		expect(appModule).toContain('window.__kozeAugment =');
+		expect(appModule).toContain('if(window.__kozeBridgeReady) return;');
 	});
 
 	test('preserves document script tags in app shell head', async () => {

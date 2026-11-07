@@ -344,7 +344,7 @@ function shouldRewriteEnvIdentifier(node: ts.Identifier): boolean {
   if (ts.isQualifiedName(parent) && parent.right === node) return false;
   if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
   if (ts.isShorthandPropertyAssignment(parent) && parent.name === node) return true;
-  if (ts.isBindingElement(parent) && parent.name === node) return false;
+  if (ts.isBindingElement(parent) && (parent.name === node || parent.propertyName === node)) return false;
   return true;
 }
 
@@ -360,7 +360,7 @@ function shouldRewriteReactiveIdentifier(node: ts.Identifier): boolean {
   if (ts.isQualifiedName(parent) && parent.right === node) return false;
   if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
   if (ts.isShorthandPropertyAssignment(parent) && parent.name === node) return true;
-  if (ts.isBindingElement(parent) && parent.name === node) return false;
+  if (ts.isBindingElement(parent) && (parent.name === node || parent.propertyName === node)) return false;
   if (ts.isPropertyDeclaration(parent) && parent.name === node) return false;
   if (ts.isMethodDeclaration(parent) && parent.name === node) return false;
   if (ts.isLabeledStatement(parent) && parent.label === node) return false;

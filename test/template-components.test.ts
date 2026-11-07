@@ -286,3 +286,29 @@ import StyledCard from '$lib/cards/styled-card.koze';
     expect(normalizedCss).not.toContain('.dz-hash from');
   });
 });
+
+it('compiles component-owned augmented actions and registers their server targets', () => {
+  const projectDir = createTempProject('component-actions');
+  const libDir = path.join(projectDir, 'src/lib');
+  fs.mkdirSync(libDir, { recursive: true });
+  const file = path.join(libDir, 'editor.koze');
+  fs.writeFileSync(file, `<script>
+import { props } from 'koze:component';
+import { augment } from '@kuratchi/koze';
+import { saveRecord } from '$server/records';
+const save = augment(saveRecord, { success({ form }) { form.reset(); } });
+</script>
+<form action={save} method="POST"><input name="id" value={props.id} /><button disabled={save.pending}>Save</button></form>
+if (save.error) {
+  <p>{save.error}</p>
+}`);
+  const compiler = createComponentCompiler({ projectDir, srcDir: path.join(projectDir, 'src'), isDev: true });
+  const components = compiler.collectComponentMap({ Editor: 'editor' });
+  const compiled = compiler.ensureCompiled('editor')!;
+  expect(compiled).toContain('data-action-augment');
+  expect(compiled).toContain('__kozeAugment');
+  expect(compiled).toContain('__kRoot');
+  expect(compiler.collectServerActionBindings(components)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ actionName: 'save', localName: 'saveRecord', importedName: 'saveRecord' }),
+  ]));
+});

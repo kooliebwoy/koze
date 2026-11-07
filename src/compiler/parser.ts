@@ -490,7 +490,7 @@ export function stripAugmentedActionDeclarations(scriptBody: string, aliases: Au
   return output;
 }
 
-export function rewriteAugmentedActionInitializersForClient(scriptBody: string, aliases: AugmentedActionAlias[]): string {
+export function rewriteAugmentedActionInitializersForClient(scriptBody: string, aliases: AugmentedActionAlias[], rootIdentifier?: string): string {
   if (!scriptBody || aliases.length === 0) return scriptBody;
   const aliasByName = new Map(aliases.map((alias) => [alias.name, alias]));
   const sourceFile = ts.createSourceFile('koze-client-augment-actions.ts', scriptBody, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -514,6 +514,10 @@ export function rewriteAugmentedActionInitializersForClient(scriptBody: string, 
             factory.createStringLiteral(alias.name),
             factory.createStringLiteral(alias.target),
             ...node.initializer.arguments,
+            ...(rootIdentifier ? [
+              ...(node.initializer.arguments.length < 2 ? [factory.createIdentifier('undefined')] : []),
+              factory.createIdentifier(rootIdentifier),
+            ] : []),
           ],
         );
         return factory.updateVariableDeclaration(node, node.name, node.exclamationToken, node.type, rewritten);

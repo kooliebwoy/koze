@@ -66,6 +66,8 @@ function patchHtmlTag(source: string, theme: string, radius: string): string {
 }
 
 const BRIDGE_SOURCE = `(function(){
+if(window.__kozeBridgeReady) return;
+window.__kozeBridgeReady = true;
 function nearestIslandRoot(node){
   let current = node && node.nodeType === 1 ? node : (node && node.parentElement) ? node.parentElement : null;
   while(current){
@@ -112,11 +114,12 @@ function by(sel, root){
     }
   };
   var __actionStates = window.__kozeActions = window.__kozeActions || Object.create(null);
+  var __componentActionStates = new WeakMap();
   function defineActionMeta(state, key, value){
     try { Object.defineProperty(state, key, { value: value, enumerable: false, configurable: true, writable: true }); }
     catch(_err){ state[key] = value; }
   }
-  window.__kozeAugment = window.__kozeAugment || function(alias, targetName, _target, hooks){
+  window.__kozeAugment = window.__kozeAugment || function(alias, targetName, _target, hooks, root){
     var initial = { __kozeAction: String(alias || ''), error: undefined, pending: false, success: false };
     var state = window.__kozeReactive && typeof window.__kozeReactive.state === 'function'
       ? window.__kozeReactive.state(initial)
@@ -124,11 +127,18 @@ function by(sel, root){
     defineActionMeta(state, '__kozeAction', String(alias || ''));
     defineActionMeta(state, '__kozeTargetAction', String(targetName || ''));
     defineActionMeta(state, '__kozeHooks', hooks && typeof hooks === 'object' ? hooks : {});
-    if(alias) __actionStates[String(alias)] = state;
+    var states = __actionStates;
+    if(root) {
+      states = __componentActionStates.get(root);
+      if(!states) { states = Object.create(null); __componentActionStates.set(root, states); }
+    }
+    if(alias) states[String(alias)] = state;
     return state;
   };
-  function updateActionState(actionName, patch){
-    var state = actionName ? __actionStates[String(actionName)] : null;
+  function updateActionState(actionName, patch, form){
+    var root = form && form.closest ? form.closest('[data-k-island-root]') : null;
+    var states = root ? __componentActionStates.get(root) : null;
+    var state = actionName ? (states && states[String(actionName)]) || __actionStates[String(actionName)] : null;
     if(!state) return null;
     if(Object.prototype.hasOwnProperty.call(patch, 'error')) state.error = patch.error;
     if(Object.prototype.hasOwnProperty.call(patch, 'pending')) state.pending = !!patch.pending;
@@ -207,7 +217,7 @@ function by(sel, root){
         pending: false,
         success: !!(payload && payload.ok),
       };
-      var state = updateActionState(nextAction, nextState);
+      var state = updateActionState(nextAction, nextState, form);
       var hookPayload = {
         action: nextAction,
         form: form,
@@ -414,7 +424,7 @@ function by(sel, root){
     if(String(f.method || 'GET').toUpperCase() !== 'POST') return;
     if(f.target && f.target !== '_self') return;
     setActionPending(f, aName);
-    var state = mode === 'state' ? updateActionState(aName, { error: undefined, pending: true, success: false }) : null;
+    var state = mode === 'state' ? updateActionState(aName, { error: undefined, pending: true, success: false }, f) : null;
     if(state) callActionHook(state, 'pending', { action: aName, form: f });
     e.preventDefault();
     var headers = { 'x-koze-action': mode === 'state' ? 'augment' : 'augment-html' };
@@ -430,7 +440,7 @@ function by(sel, root){
       })
       .catch(function(err){
         console.error('[koze] form action error:', err);
-        var failedState = mode === 'state' ? updateActionState(aName, { error: err && err.message ? err.message : 'Action failed', pending: false, success: false }) : null;
+        var failedState = mode === 'state' ? updateActionState(aName, { error: err && err.message ? err.message : 'Action failed', pending: false, success: false }, f) : null;
         if(failedState) {
           callActionHook(failedState, 'error', { action: aName, form: f, error: failedState.error });
           callActionHook(failedState, 'settled', { action: aName, form: f, error: failedState.error });
@@ -1037,7 +1047,7 @@ export function prepareRootLayoutSource(opts: {
   const actionScript = buildBridgeScriptTag(opts.isDev);
   const reactiveRuntimeScript = buildReactiveRuntimeScriptTag(opts.isDev);
   headInjections.push(reactiveRuntimeScript);
-  bodyInjections.push(actionScript);
+  headInjections.push(actionScript);
 
   source = insertBeforeClosingTag(source, 'head', ROOT_HEAD_SLOT);
   source = insertBeforeClosingTag(source, 'body', ROOT_BODY_SLOT);

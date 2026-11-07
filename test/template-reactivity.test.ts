@@ -3,6 +3,13 @@ import { compileTemplate } from '../src/compiler/template.js';
 import { buildClientScopeMount, transformReactiveClientScript } from '../src/compiler/script-transform.js';
 
 describe('template compiler reactive transform', () => {
+  it('binds reactive textarea contents without rendering span markup as field text', () => {
+    const compiled = compileTemplate('<textarea name="description">{item.description}</textarea>', undefined, undefined, undefined, { liveTemplateNames: new Set(['item']) });
+    expect(compiled).not.toContain('<span');
+    expect(compiled).toContain('data-k-attr-value');
+    expect(compiled).toContain('__esc(item.description)');
+  });
+
   it('transforms $: expression into an internal effect', () => {
     const template = `<script>
 let users = ['Alice'];

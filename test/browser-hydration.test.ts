@@ -141,6 +141,34 @@ function button(document: Document, selector: string): HTMLButtonElement {
 describe('browser hydration runtime', () => {
   const windows: Window[] = [];
 
+  test('keeps same-name enhanced actions isolated to their component instance', async () => {
+    const window = new Window({ url: 'https://example.test/chat' });
+    windows.push(window);
+    installBrowserGlobals(window, vi.fn(async () => new Response(JSON.stringify({
+      ok: true, action: 'save', result: { id: 'first' }, state: { success: true, pending: false },
+    }), { headers: { 'content-type': 'application/json' } })) as unknown as typeof fetch);
+    window.eval(scriptBody(buildReactiveRuntimeScriptTag(true)));
+    window.eval(scriptBody(buildBridgeScriptTag(true)));
+    window.document.body.innerHTML = `<textarea id="draft">Unsent reply</textarea>
+      <section data-k-island-root><form method="post" data-action-augment="save"><input name="_action" value="save"></form></section>
+      <section data-k-island-root><form method="post" data-action-augment="save"><input name="_action" value="save"></form></section>`;
+    const roots = window.document.querySelectorAll('section');
+    const firstSuccess = vi.fn();
+    const secondSuccess = vi.fn();
+    const augment = (window as any).__kozeAugment;
+    const first = augment('save', 'saveRecord', () => {}, { success: firstSuccess }, roots[0]);
+    const second = augment('save', 'saveRecord', () => {}, { success: secondSuccess }, roots[1]);
+    const form = roots[0].querySelector('form')!;
+    form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await flushBrowser(window);
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(false);
+    expect(firstSuccess).toHaveBeenCalledOnce();
+    expect(secondSuccess).not.toHaveBeenCalled();
+    expect(window.document.querySelector('form')).toBe(form);
+    expect((window.document.querySelector('#draft') as any).value).toBe('Unsent reply');
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     for (const window of windows.splice(0)) {

@@ -240,6 +240,13 @@ The server calling convention is `fn(...args, ctx)`. Native forms pass only the 
 
 Successful native actions follow POST-Redirect-GET. Enhanced actions use the same server function and preserve the native fallback.
 
+Shared components can own enhanced forms with `const save = augment(saveRecord,
+{ success({ result, form }) { form.reset(); } })` imported from `@kuratchi/koze`.
+Use `<form action={save} method="POST">` and `save.pending`, `save.error`, or
+`save.success` for feedback. Submissions update action state without replacing
+the page. Each component instance has its own state and hooks, so submitting one
+dialog does not change another instance or discard an unsent form elsewhere.
+
 ## Middleware
 
 Request-time composition lives in `src/middleware.ts`:
@@ -428,6 +435,12 @@ import { createKozeCompiler } from '@kuratchi/koze/compiler';
 The compiler API is deterministic and project-local. It parses and transforms Koze source, reports diagnostics and dependencies, and generates framework types. It has no `cloudflare` capability group and performs no infrastructure writes.
 
 ## Verification
+
+When configuring CSP for reactive templates, Koze currently requires
+`script-src 'self' 'nonce-{NONCE}' 'unsafe-eval'`: the per-request nonce
+authorizes generated scripts, and the reactive expression renderer uses dynamic
+evaluation. Koze stamps HTML script elements with the nonce before returning the
+response, including streamed output.
 
 Framework changes run:
 

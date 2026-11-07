@@ -20,6 +20,7 @@ import {
 } from './parser.js';
 import {
 	buildReactiveRuntimeScriptTag,
+	buildBridgeScriptTag,
 } from './root-layout-pipeline.js';
 import {
 	buildClientScopeMount,
@@ -1648,6 +1649,7 @@ export function transformAppFile(
 	const prelude = appPreludePlan.prelude;
 	const requestImportDecls = buildRequestImportDecls(parsed.requestImports ?? []);
 	let body = compileTemplate(template, componentNames, undefined, undefined, {
+		clientRouteRegistry: leadingHash ? clientFragments?.get(leadingHash)?.handlerRegistry as any : undefined,
 		reactiveOwnerId: leadingHash ?? undefined,
 	});
 	if (leadingHash) {
@@ -1757,7 +1759,7 @@ function injectGlobalCssLink(template: string): string {
 
 function injectReactiveRuntimeScript(template: string, isProduction: boolean): string {
 	if (template.includes('__kozeReactive')) return template;
-	const tag = buildReactiveRuntimeScriptTag(!isProduction);
+	const tag = buildReactiveRuntimeScriptTag(!isProduction) + '\n' + buildBridgeScriptTag(!isProduction);
 	if (/<\/head\s*>/i.test(template)) {
 		return template.replace(/<\/head\s*>/i, `\t${tag}\n</head>`);
 	}
@@ -1860,6 +1862,11 @@ export function transformLayoutFile(
 		(name: string) => layoutServerRpcFunctions.has(name) || layoutAugmentedActionNames.has(name),
 	)) {
 		layoutActionNames.add(fnName);
+	}
+	for (const binding of componentCompiler.collectServerActionBindings(componentNames)) {
+		const actionName = binding.actionName ?? binding.localName;
+		layoutActionNames.add(actionName);
+		if (binding.actionName) layoutActionAliasTargets.set(actionName, binding.localName);
 	}
 	const layoutPreludeScript = stripAugmentedActionsFromServerPrelude(script, layoutActionAliases);
 	const layoutNeededActionBindings = Array.from(new Set([
@@ -2236,7 +2243,9 @@ export function transformRouteFile(
 	// dispatcher even though the route template never references the
 	// function identifier itself.
 	for (const binding of componentCompiler.collectServerActionBindings(componentNames)) {
-		actionNames.add(binding.localName);
+		const actionName = binding.actionName ?? binding.localName;
+		actionNames.add(actionName);
+		if (binding.actionName) actionAliasTargets.set(actionName, binding.localName);
 	}
 	const routePreludeScript = stripAugmentedActionsFromServerPrelude(script, actionAliases);
 	const neededActionBindings = Array.from(new Set([

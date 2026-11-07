@@ -9,7 +9,7 @@ const fixtureRoot = fileURLToPath(new URL('./test/vite/integration/native-worker
 export default defineConfig({
 	root: fixtureRoot,
 	plugins: [
-		koze(),
+		koze({ security: { contentSecurityPolicy: "default-src 'self'; script-src 'self' 'nonce-{NONCE}'" } }),
 		cloudflareTest({
 			wrangler: { configPath: './wrangler.jsonc' },
 		}),

@@ -6,5 +6,5 @@ import { koze } from '../../../../dist/vite/index.js';
 
 export default defineConfig({
 	root: fileURLToPath(new URL('.', import.meta.url)),
-	plugins: [koze(), cloudflare({ viteEnvironment: { name: 'ssr' } })],
+	plugins: [koze({ security: { contentSecurityPolicy: "default-src 'self'; script-src 'self' 'nonce-{NONCE}'" } }), cloudflare({ viteEnvironment: { name: 'ssr' } })],
 });

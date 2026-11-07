@@ -49,6 +49,12 @@ const __cspUsesNonce = !!(
 
 function applySecurityHeaders(response) {
 	if (isWebSocketUpgradeResponse(response)) return response;
+	const nonce = __cspUsesNonce ? getCspNonce() : '';
+	if (nonce && response.headers.get('Content-Type')?.includes('text/html')) {
+		response = new HTMLRewriter().on('script', {
+			element(element) { element.setAttribute('nonce', nonce); },
+		}).transform(response);
+	}
 	return __applySecHeadersRaw(response, __securityConfig);
 }
 

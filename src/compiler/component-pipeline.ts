@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as ts from 'typescript';
 import { componentFuncName } from './compiler-shared.js';
-import { parseFile, stripTopLevelImports } from './parser.js';
+import { parseFile, stripTopLevelImports, rewriteAugmentedActionInitializersForClient, type AugmentedActionAlias } from './parser.js';
 import { parseImportStatement, parseNamedImportBindings } from './import-linking.js';
 import { analyzeClientTemplateReactivity, buildClientTemplateRenderersExpression, compileTemplate } from './template.js';
 import { buildClientScopeMount, buildDevAliasDeclarations, transformReactiveClientScript } from './script-transform.js';
@@ -64,6 +64,7 @@ interface ComponentImportMetadata {
 }
 
 interface ComponentServerRpcBinding {
+  actionName?: string;
   importedName: string;
   localName: string;
   sourceKey: string;
@@ -515,12 +516,13 @@ function collectComponentServerRpcBindings(
 }
 
 function buildComponentClientScript(opts: {
+  actionAliases: AugmentedActionAlias[];
   rawScript: string;
   reactiveNames: Set<string>;
   blockRenderersExpr?: string;
   serverRpcBindings: ComponentServerRpcBinding[];
 }): string {
-  const bodyWithoutImportsRaw = stripTopLevelImports(opts.rawScript);
+  const bodyWithoutImportsRaw = rewriteAugmentedActionInitializersForClient(stripTopLevelImports(opts.rawScript), opts.actionAliases, '__kRoot');
   const bodyWithoutImports = bodyWithoutImportsRaw
     ? ts.transpileModule(bodyWithoutImportsRaw, {
         compilerOptions: {
@@ -584,6 +586,7 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
   const compiledComponentCache = new Map<string, string>();
   const componentStyleCache = new Map<string, string>();
   const componentActionCache = new Map<string, Set<string>>();
+  const componentActionAliases = new Map<string, AugmentedActionAlias[]>();
   const resolvedFiles = new Map<string, string>();
   const componentImportCache = new Map<string, ComponentImportMetadata>();
 
@@ -663,6 +666,9 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     const scopeHash = 'dz-' + crypto.createHash('md5').update(fileName).digest('hex').slice(0, 6);
     const rawSource = fs.readFileSync(filePath, 'utf-8');
     const parsed = parseFile(rawSource, { kind: 'component', filePath });
+    const actionAliases = parsed.actionAliases ?? [];
+    componentActionAliases.set(fileName, actionAliases);
+    const augmentedActionNames = new Set(actionAliases.map((alias) => alias.name));
     const serverRpcBindings = collectComponentServerRpcBindings(parsed.serverImports ?? [], filePath, srcDir);
     componentImportCache.set(fileName, {
       filePath,
@@ -772,22 +778,24 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     }
     componentActionCache.set(fileName, actionPropNames);
 
-    const clientTemplatePlan = analyzeClientTemplateReactivity(
-      source,
-      rawScript,
-      subComponentNames,
-      undefined,
-      undefined,
-      { clientScriptBody: rawScript },
-    );
     const localServerActionNames = new Set(
       serverRpcBindings
         .filter((binding) => actionPropNames.has(binding.localName))
         .map((binding) => binding.localName),
     );
+    for (const name of augmentedActionNames) localServerActionNames.add(name);
+    const clientTemplatePlan = analyzeClientTemplateReactivity(
+      source,
+      rawScript,
+      subComponentNames,
+      localServerActionNames,
+      undefined,
+      { clientScriptBody: rawScript, augmentedActionNames },
+    );
     const body = compileTemplate(source, subComponentNames, localServerActionNames, undefined, {
       clientScriptBody: rawScript,
       liveTemplateNames: clientTemplatePlan.reactiveNames,
+      augmentedActionNames,
     });
     const scopeOpen = `__parts.push('<div class="${scopeHash}" data-k-island-root>');`;
     const scopeClose = `__parts.push('</div>');`;
@@ -796,6 +804,7 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     const safeInsertIndex = insertIndex === -1 ? bodyLines.length : insertIndex;
     const componentClientScript = rawScript.trim()
       ? buildComponentClientScript({
+          actionAliases,
           rawScript,
           reactiveNames: clientTemplatePlan.reactiveNames,
           blockRenderersExpr: buildClientTemplateRenderersExpression(clientTemplatePlan.blockRenderers),
@@ -1026,13 +1035,16 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
   }
 
   function collectServerActionBindings(componentNames: Map<string, string>): ComponentServerRpcBinding[] {
-    return collectServerRpcBindings(componentNames).filter((binding) => {
+    return collectServerRpcBindings(componentNames).flatMap((binding) => {
+      const actions: ComponentServerRpcBinding[] = [];
       for (const [fileName, meta] of componentImportCache.entries()) {
-        if (meta.serverRpcBindings.includes(binding) && getActionPropNames(fileName).has(binding.localName)) {
-          return true;
+        if (!meta.serverRpcBindings.includes(binding)) continue;
+        if (getActionPropNames(fileName).has(binding.localName)) actions.push(binding);
+        for (const alias of componentActionAliases.get(fileName) ?? []) {
+          if (alias.target === binding.localName) actions.push({ ...binding, actionName: alias.name });
         }
       }
-      return false;
+      return actions;
     });
   }
 
@@ -1042,6 +1054,7 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
         compiledComponentCache.delete(k);
         componentStyleCache.delete(k);
         componentActionCache.delete(k);
+        componentActionAliases.delete(k);
         componentImportCache.delete(k);
         resolvedFiles.delete(k);
       }
@@ -1049,6 +1062,7 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     compiledComponentCache.delete(fileNameOrPath);
     componentStyleCache.delete(fileNameOrPath);
     componentActionCache.delete(fileNameOrPath);
+    componentActionAliases.delete(fileNameOrPath);
     componentImportCache.delete(fileNameOrPath);
   }
 

@@ -5,7 +5,13 @@ describe('native Koze Worker', () => {
 	test('renders a Koze route through the application-owned Worker', async () => {
 		const response = await worker.default.fetch(new Request('https://example.com/'));
 		expect(response.status).toBe(200);
-		expect(await response.text()).toContain('Rendered by Koze inside workerd.');
+		const html = await response.text();
+		expect(html).toContain('Rendered by Koze inside workerd.');
+		const nonce = response.headers.get('Content-Security-Policy')?.match(/'nonce-([^']+)'/)?.[1];
+		expect(nonce).toBeTruthy();
+		const scripts = html.match(/<script(?:\s[^>]*|)>/g) || [];
+		expect(scripts.length).toBeGreaterThan(0);
+		for (const script of scripts) expect(script).toContain(`nonce="${nonce}"`);
 	});
 
 	test('exports and calls a native Durable Object class', async () => {

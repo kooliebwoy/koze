@@ -2119,6 +2119,17 @@ function compileHtmlSegment(
           // The awaited value is hydrated into scope as `<asName>.data` by the
           // route pipeline. Emit only the escaped text — no wrapper attributes.
           result += `\${__esc(((${awaitBinding.asName} && ${awaitBinding.asName}.data) ?? ''))}`;
+        } else if (/<textarea\b[^>]*>[^<]*$/i.test(line.slice(0, braceIdx))) {
+          // Textareas parse children as text, so reactive span markers become
+          // visible field contents. Bind the element's value instead.
+          if (isLiveTemplateExpression(inner, options.liveTemplateNames) && /<textarea\b[^>]*>$/.test(line.slice(0, braceIdx)) && /^<\/textarea\s*>/i.test(line.slice(closeIdx + 1))) {
+            const tagStart = result.toLowerCase().lastIndexOf('<textarea');
+            const tagEnd = findCompiledOpenTagEnd(result, tagStart);
+            if (tagEnd >= 0 && !result.slice(tagStart, tagEnd).includes('data-k-bind-value')) {
+              result = result.slice(0, tagEnd) + ` data-k-attr-value="\${__esc(${JSON.stringify(inner)})}"${buildReactiveOwnerAttribute(options)}${buildLocalScopeAttribute(inner, activeLocalNames)}` + result.slice(tagEnd);
+            }
+          }
+          result += `\${__esc(${inner})}`;
         } else if (isLiveTemplateExpression(inner, options.liveTemplateNames)) {
           result += `<span data-k-text="\${__esc(${JSON.stringify(inner)})}"${buildReactiveOwnerAttribute(options)}${buildLocalScopeAttribute(inner, activeLocalNames)}>\${__esc(${inner})}</span>`;
         } else {
