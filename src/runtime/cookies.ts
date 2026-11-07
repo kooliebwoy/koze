@@ -1,4 +1,4 @@
-import { request } from './request.js';
+import { __getCurrentRequest } from './context.js';
 
 export interface CookieOptions {
   path?: string;
@@ -52,15 +52,15 @@ function serializeCookie(name: string, value: string, options?: CookieOptions): 
 
 export const cookies = {
   get(name: string): string | undefined {
-    return parseCookies(request.headers.get('cookie'))[name];
+    return parseCookies(__getCurrentRequest()?.headers.get('cookie') ?? null)[name];
   },
 
   getAll(): Record<string, string> {
-    return parseCookies(request.headers.get('cookie'));
+    return parseCookies(__getCurrentRequest()?.headers.get('cookie') ?? null);
   },
 
   has(name: string): boolean {
-    return Object.prototype.hasOwnProperty.call(parseCookies(request.headers.get('cookie')), name);
+    return Object.prototype.hasOwnProperty.call(parseCookies(__getCurrentRequest()?.headers.get('cookie') ?? null), name);
   },
 
   set(name: string, value: string, options?: CookieOptions): void {

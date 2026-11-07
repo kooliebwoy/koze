@@ -54,6 +54,7 @@ const {
 		buildBridgeScriptSource,
 		isKozeVirtualModule,
 		resolveKozeVirtualModule,
+		transformServerRequestImports,
 	},
 	project: {
 		analyzeProject,
@@ -711,6 +712,11 @@ function routesPlugin(options: ResolvedKozeOptions): Plugin {
 					};
 				}
 			}
+		},
+
+		transform(code, id, options) {
+			if (!options?.ssr) return null;
+			return transformServerRequestImports(code, id);
 		},
 
 		async resolveId(id, importer) {

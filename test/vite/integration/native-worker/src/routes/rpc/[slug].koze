@@ -1,0 +1,9 @@
+<script>
+import { inspectContext } from '$server/rpc';
+
+let result = null;
+</script>
+
+<button onClick={result = inspectContext(0)}>Inspect context</button>
+<p>{result?.after?.slug}</p>
+<p>{await inspectContext(0)}</p>

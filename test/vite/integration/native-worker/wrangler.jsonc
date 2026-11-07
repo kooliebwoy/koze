@@ -3,6 +3,7 @@
 	"name": "koze-native-worker-integration",
 	"main": "src/worker.ts",
 	"compatibility_date": "2026-08-24",
+	"compatibility_flags": ["nodejs_compat"],
 	"durable_objects": {
 		"bindings": [
 			{ "name": "COUNTER", "class_name": "NativeCounter" }

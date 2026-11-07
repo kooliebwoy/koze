@@ -23,6 +23,17 @@ export interface KuratchiSourceMapAnchor {
   sourceNeedle?: string;
 }
 
+export function createLinePreservingSourceMap(source: string, sourcePath: string): KuratchiSourceMap {
+  const lineCount = source.split('\n').length;
+  return {
+    version: 3,
+    sources: [normalizeSourcePath(sourcePath)],
+    sourcesContent: [source],
+    names: [],
+    mappings: 'AAAA' + ';AACA'.repeat(lineCount - 1),
+  };
+}
+
 interface SourceMapSegment {
   generatedLine: number;
   generatedColumn: number;

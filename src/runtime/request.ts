@@ -1,4 +1,4 @@
-import { __getLocals } from './context.js';
+import { __getCurrentRequest, __getCurrentUrl, __getLocals } from './context.js';
 
 // Global App namespace for user-defined types
 declare global {
@@ -18,6 +18,21 @@ export let headers = new Headers();
 export let method = 'GET';
 export let params: Record<string, string> = {};
 export let slug: string | undefined = undefined;
+
+// Named server imports are compiled to property reads so primitive values
+// and native objects are both resolved when the caller accesses them.
+export const __requestValues = {
+  get request() { return __getCurrentRequest() ?? request; },
+  get url() { return __getCurrentUrl() ?? url; },
+  get pathname() { return this.url.pathname; },
+  get searchParams() { return this.url.searchParams; },
+  get headers() { return this.request.headers; },
+  get method() { return this.request.method; },
+  get params(): Record<string, string> { return __getLocals().params ?? emptyParams; },
+  get slug(): string | undefined { return this.params.slug ?? Object.values(this.params)[0]; },
+};
+
+const emptyParams: Record<string, string> = Object.freeze({});
 
 /** 
  * Direct access to request-scoped locals.

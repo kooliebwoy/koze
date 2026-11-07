@@ -4,19 +4,19 @@
  * (NOT transpiled by Vite, NOT a template literal) so comments can use
  * backticks and ${} freely without template-literal escaping hazards.
  *
- * Runs inside the Worker runtime: no Node APIs, no TypeScript, ESM-only,
- * globals limited to the Worker platform (Request, Response, URL, fetch,
- * crypto, etc.).
+ * Runs inside the Worker runtime as ESM.
  */
 
 import { routes, preparedRouter } from 'koze:routes';
 import { lookup as lookupRpcModule } from 'koze:rpc-map';
 import { runtime as middlewareRuntime } from 'virtual:koze-middleware-entry';
-// Populate the per-request globals that `getEnv()` and the request-state
-// virtual modules read. Without
-// this, any `$server/*` code using `getEnv()` (e.g. the ORM's lazy
-// binding resolver) throws "called outside of a request context".
-import { __setRequestContext, __getLocals } from '@kuratchi/koze/runtime/context.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import {
+	__installRequestContextStorage,
+	__runWithRequestContext,
+	__runWithRouteParams,
+	__getLocals,
+} from '@kuratchi/koze/runtime/context.js';
 import { matchPreparedRouter } from '@kuratchi/koze/runtime/router.js';
 import {
 	createKuratchiCapnWebHttpResponse,
@@ -46,6 +46,8 @@ const __cspUsesNonce = !!(
 	__securityConfig?.contentSecurityPolicy &&
 	__securityConfig.contentSecurityPolicy.includes('{NONCE}')
 );
+
+__installRequestContextStorage(new AsyncLocalStorage());
 
 function applySecurityHeaders(response) {
 	if (isWebSocketUpgradeResponse(response)) return response;
@@ -213,29 +215,18 @@ async function loadRoute(match) {
  * High-level Koze request handler. The user's Worker delegates via
  * `koze:worker`, which wires this `handle` into the `fetch` export.
  */
-export async function handle(request, env, ctx) {
+export function handle(request, env, ctx) {
 	const url = new URL(request.url);
+	return __runWithRequestContext(ctx, request, url, env, () => handleInContext(request, url, env, ctx));
+}
 
-	// Seed the module-scoped context so helpers like `getEnv()` and the
-	// request-state bindings work in any
-	// `$server/*` module for the duration of this request. Workers are
-	// single-threaded per isolate, so this is safe despite the module
-	// scope — the handler completes before the next request starts.
-	__setRequestContext(ctx, request, env);
-
+async function handleInContext(request, url, env, ctx) {
 	// Per-request CSP nonce — only when the policy opts in via `{NONCE}`.
 	// Most apps don't configure a CSP at all; skip the work.
 	if (__cspUsesNonce) {
 		initCspNonce();
 	}
 
-	// Runtime context passed to every middleware step. `locals` MUST be
-	// the same object the runtime `locals` proxy reads — otherwise
-	// middleware mutations (e.g. `ctx.locals.userId = 1`) land on a
-	// detached object and downstream handlers, actions, and
-	// `$server/*` modules read `undefined`. `__setRequestContext` reset
-	// `__locals = {}` above; we grab that same reference and hand it
-	// through the runtime context.
 	const runtimeCtx = {
 		request,
 		env,
@@ -366,6 +357,7 @@ async function coreHandle(runtimeCtx) {
 	await loadRoute(match);
 	const params = routeMatch.params;
 	runtimeCtx.params = params;
+	runtimeCtx.locals.params = params;
 
 	if (match.type === 'api') {
 		return handleApiRoute(match.api, runtimeCtx);
@@ -395,7 +387,15 @@ async function dispatchChannelCall(input, runtimeCtx) {
 async function dispatchRouteChannelCall(input, runtimeCtx) {
 	const op = input && typeof input.op === 'string' ? input.op : '';
 	const routePath = input && typeof input.route === 'string' ? input.route : runtimeCtx.url.pathname;
-	const routeUrl = new URL(routePath || '/', runtimeCtx.url.origin);
+	let routeUrl;
+	try {
+		routeUrl = new URL(routePath || '/', runtimeCtx.url.origin);
+	} catch {
+		return { ok: false, status: 400, error: 'Invalid RPC route URL' };
+	}
+	if (routeUrl.origin !== runtimeCtx.url.origin) {
+		return { ok: false, status: 400, error: 'Invalid RPC route URL' };
+	}
 	const routeMatch = matchPreparedRouter(preparedRouter, routeUrl.pathname);
 	const match = routeMatch ? compiledRoutes[routeMatch.index] : null;
 	if (match) await loadRoute(match);
@@ -406,26 +406,14 @@ async function dispatchRouteChannelCall(input, runtimeCtx) {
 	if (!op || !rpcTable || !Object.hasOwn(rpcTable, op)) {
 		return { ok: false, status: 404, error: `Unknown channel operation: ${op || '(missing)'}` };
 	}
-	const previousUrl = runtimeCtx.url;
-	const previousParams = runtimeCtx.params;
-	const locals = __getLocals();
-	const previousLocalParams = locals.params;
-	runtimeCtx.url = routeUrl;
-	runtimeCtx.params = params || {};
-	locals.params = params || {};
 	try {
-		return await invokeKuratchiChannelHost(
+		return await __runWithRouteParams(routeUrl, params || {}, () => invokeKuratchiChannelHost(
 			{ operations: rpcTable, schemas: match.module.rpcSchemas },
 			{ op, args: input.args, kind: input.kind || 'query' },
-		);
+		));
 	} catch (err) {
 		console.error('[koze] Capn Web route RPC error:', err);
 		return { ok: false, status: 500, error: sanitizeErrorMessage(err, 'RPC call failed') };
-	} finally {
-		runtimeCtx.url = previousUrl;
-		runtimeCtx.params = previousParams;
-		if (previousLocalParams === undefined) delete locals.params;
-		else locals.params = previousLocalParams;
 	}
 }
 

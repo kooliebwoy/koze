@@ -41,3 +41,5 @@ Vitest does not unwrap promises passed to `.toThrow()`.
 ## Worker integration
 
 `vitest.workerd.config.ts` executes `test/vite/integration/native-worker/` through Cloudflare's current Vitest plugin. It proves SSR, a native Durable Object export/RPC, and a non-fetch handler inside `workerd`. Extend that fixture for Worker-runtime regressions; do not restore a generated-worker harness.
+
+The fixture sends Cap’n Web HTTP batches through the application Worker. It verifies route params and cookie isolation across overlapping operations and requests, partial failure within a batch, and that a committed mutation runs only once when the browser loses the response.

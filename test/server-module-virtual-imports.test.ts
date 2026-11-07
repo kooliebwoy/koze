@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { createServerModuleCompiler } from '../src/compiler/server-module-pipeline.ts';
+import { transformServerRequestImports } from '../src/compiler/request-imports.ts';
 
 describe('server-module-pipeline virtual imports', () => {
   let tempDir: string;
@@ -67,6 +68,26 @@ export function getRequestInfo() {
     const output = fs.readFileSync(outputPath, 'utf-8');
 
     expect(output).toContain("from '@kuratchi/koze/runtime/request.js'");
+    expect(output).toContain('method: __kozeRequestValues.request.method');
+    expect(output).toContain('params: __kozeRequestValues.params, locals, headers: __kozeRequestValues.headers');
+  });
+
+  test('rewrites aliased value reads without rewriting type queries or shadowed names', () => {
+    const source = `
+import { headers as currentHeaders, slug } from 'koze:request';
+type IncomingHeaders = typeof currentHeaders;
+function shadowed(currentHeaders: IncomingHeaders) { return { currentHeaders }; }
+export async function read() {
+  await Promise.resolve();
+  return { currentHeaders, slug, key: currentHeaders.get('cookie') };
+}
+`;
+    const result = transformServerRequestImports(source, 'request.ts');
+    expect(result?.code).toContain('type IncomingHeaders = typeof currentHeaders;');
+    expect(result?.code).toContain('return { currentHeaders };');
+    expect(result?.code).toContain('currentHeaders: __kozeRequestValues.headers, slug: __kozeRequestValues.slug');
+    expect(result?.code).toContain("key: __kozeRequestValues.headers.get('cookie')");
+    expect(result?.code.split('\n')).toHaveLength(source.split('\n').length);
   });
 
   test('allows redirect from koze:navigation in src/server modules', () => {

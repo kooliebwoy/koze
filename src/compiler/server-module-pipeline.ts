@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import ts from 'typescript';
 
 import { parseImportStatement } from './import-linking.js';
+import { transformServerRequestImports } from './request-imports.js';
 import { isKozeVirtualModule, resolveKozeVirtualModule, validateKozeVirtualModuleImport } from './virtual-modules.js';
 
 export interface ServerModuleCompiler {
@@ -157,7 +158,8 @@ export function createServerModuleCompiler(
       return toModuleSpecifier(outPath, rewrittenTarget);
     };
 
-    let rewritten = stripKuratchiEnvironmentImports(source);
+    const requestTransform = transformServerRequestImports(source, resolved);
+    let rewritten = stripKuratchiEnvironmentImports(requestTransform?.code ?? source);
     rewritten = rewritten.replace(/(from\s+)(['"])([^'"]+)\2/g, (_match, prefix: string, quote: string, spec: string) => {
       return `${prefix}${quote}${rewriteSpecifier(spec)}${quote}`;
     });

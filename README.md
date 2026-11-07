@@ -68,6 +68,24 @@ wrangler deploy
 
 Development and preview run through Cloudflare's official Vite integration in `workerd`, not a Koze emulator.
 
+Koze uses the Worker’s `AsyncLocalStorage` API to keep locals and cookies
+isolated across asynchronous requests and to give each routed RPC call its own
+`locals.params`. If your Worker’s compatibility settings do not already enable
+that API, add `"compatibility_flags": ["nodejs_als"]` to `wrangler.jsonc`.
+In server code, named imports from `koze:request` read the active request,
+including after an `await`. For routed RPC, `url` and `params` describe the
+target route, while `request` and `headers` describe the incoming HTTP request.
+Read these values inside request handlers or functions they call.
+
+```ts
+import { headers, params } from 'koze:request';
+
+export async function loadProfile() {
+  const profile = await findProfile(params.slug);
+  return { profile, language: headers.get('accept-language') };
+}
+```
+
 ## Pages
 
 Files below `src/routes/` use the `.koze` extension. The file path determines the URL:

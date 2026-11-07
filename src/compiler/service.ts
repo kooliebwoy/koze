@@ -42,6 +42,7 @@ import {
   transformReactiveClientScript,
 } from './script-transform.js';
 import { createServerModuleCompiler } from './server-module-pipeline.js';
+import { transformServerRequestImports } from './request-imports.js';
 import { parseKuratchiSfc } from './sfc-parser.js';
 import {
   appendInlineSourceMap,
@@ -102,6 +103,7 @@ export function createKozeCompiler() {
       buildSelectiveSsrPrelude,
       buildClientScopeMount,
       transformReactiveClientScript,
+      transformServerRequestImports,
       buildBridgeScriptSource,
       buildReactiveRuntimeScriptTag,
       isKozeVirtualModule,
